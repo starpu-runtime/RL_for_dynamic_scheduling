@@ -1,11 +1,16 @@
+from typing import Dict
+
 import numpy as np
 import torch
 import torch.nn as nn
+from torch import Tensor
 from torch.nn import Linear
 from torch_geometric.data import Data
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.nn.conv import SAGEConv
+
+from env.utils import TaskGraph
 
 
 class Net(torch.nn.Module):
@@ -54,25 +59,24 @@ class ModelHeterogene(torch.nn.Module):
         self.listmlp = nn.ModuleList()
         self.listmlp_pass = nn.ModuleList()
         self.listmlp_value = nn.ModuleList()
-        self.listgcn.append(BaseConvHeterogene(input_dim, hidden_dim, 'gcn', res=res, withbn=withbn))
+        self.listgcn.append(BaseConvHeterogeneGCN(input_dim, hidden_dim, res=res, withbn=withbn))
         for _ in range(ngcn-1):
-            self.listgcn.append(BaseConvHeterogene(hidden_dim, hidden_dim, 'gcn', res=res, withbn=withbn))
+            self.listgcn.append(BaseConvHeterogeneGCN(hidden_dim, hidden_dim, res=res, withbn=withbn))
         for _ in range(nmlp-1):
-            self.listmlp.append(BaseConvHeterogene(hidden_dim, hidden_dim, 'mlp', res=res, withbn=withbn))
+            self.listmlp.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp.append(Linear(hidden_dim, 1))
         for _ in range(nmlp_value-1):
-            self.listmlp_value.append(BaseConvHeterogene(hidden_dim, hidden_dim, 'mlp', res=res, withbn=withbn))
+            self.listmlp_value.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp_value.append(Linear(hidden_dim, 1))
 
-        self.listmlp_pass.append(BaseConvHeterogene(hidden_dim+3, hidden_dim, 'mlp', res=res, withbn=withbn))
+        self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim+3, hidden_dim, res=res, withbn=withbn))
         for _ in range(nmlp-2):
-            self.listmlp_pass.append(BaseConvHeterogene(hidden_dim, hidden_dim, 'mlp', res=res, withbn=withbn))
+            self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp_pass.append(Linear(hidden_dim, 1))
 
-
-    def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
-        x, edges = data.x, data.edge_index
+    def forward(self, x, edges, num_node, ready):
+        # data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        # x, edges = data.x, data.edge_index
         features_cluster = x[0, -3:]
 
         for layer in self.listgcn:
@@ -96,26 +100,39 @@ class ModelHeterogene(torch.nn.Module):
 
         return probs, v
 
-class BaseConvHeterogene(torch.nn.Module):
-    def __init__(self, input_dim, output_dim, type='gcn', res=False, withbn=False):
-        super(BaseConvHeterogene, self).__init__()
-        self.res =res
+class BaseConvHeterogeneGCN(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, res=False, withbn=False):
+        super(BaseConvHeterogeneGCN, self).__init__()
+        self.res = res
         self.net_type = type
-        if type == 'gcn':
-            self.layer = GCNConv(input_dim, output_dim, flow='target_to_source')
-        else:
-            self.layer = Linear(input_dim, output_dim)
+        self.layer = GCNConv(input_dim, output_dim, flow='target_to_source').jittable()
         self.withbn = withbn
         if withbn:
             self.bn = torch.nn.BatchNorm1d(output_dim)
 
-    def forward(self, input_x, input_e=None):
-        if self.net_type == 'gcn':
-            x = self.layer(input_x, input_e)
-        else:
-            x = self.layer(input_x)
-        if self.withbn:
-            x = self.bn(x)
+    def forward(self, input_x, input_e):
+        x = self.layer(input_x, input_e)
+        # if self.withbn:
+        #     x = self.bn(x)
+        if self.res:
+            return F.relu(x) + input_x
+        return F.relu(x)
+
+
+class BaseConvHeterogeneLinear(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, res=False, withbn=False):
+        super(BaseConvHeterogeneLinear, self).__init__()
+        self.res =res
+        self.net_type = type
+        self.layer = Linear(input_dim, output_dim)
+        self.withbn = withbn
+        if withbn:
+            self.bn = torch.nn.BatchNorm1d(output_dim)
+
+    def forward(self, input_x):
+        x = self.layer(input_x)
+        # if self.withbn:
+        #     x = self.bn(x)
         if self.res:
             return F.relu(x) + input_x
         return F.relu(x)
