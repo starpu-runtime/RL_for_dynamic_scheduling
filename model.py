@@ -74,7 +74,7 @@ class ModelHeterogene(torch.nn.Module):
             self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp_pass.append(Linear(hidden_dim, 1))
 
-    def forward(self, x, edges, num_node, ready):
+    def forward(self, x, edges, ready):
         # data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
         # x, edges = data.x, data.edge_index
         features_cluster = x[0, -3:]
