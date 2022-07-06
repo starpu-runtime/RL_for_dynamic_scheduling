@@ -100,12 +100,32 @@ class ModelHeterogene(torch.nn.Module):
 
         return probs, v
 
-class BaseConvHeterogeneGCN(torch.nn.Module):
+
+class BaseConvHeterogeneGCNJittable(torch.nn.Module):
     def __init__(self, input_dim, output_dim, res=False, withbn=False):
         super(BaseConvHeterogeneGCN, self).__init__()
         self.res = res
         self.net_type = type
         self.layer = GCNConv(input_dim, output_dim, flow='target_to_source').jittable()
+        self.withbn = withbn
+        if withbn:
+            self.bn = torch.nn.BatchNorm1d(output_dim)
+
+    def forward(self, input_x, input_e):
+        x = self.layer(input_x, input_e)
+        # if self.withbn:
+        #     x = self.bn(x)
+        if self.res:
+            return F.relu(x) + input_x
+        return F.relu(x)
+
+
+class BaseConvHeterogeneGCN(torch.nn.Module):
+    def __init__(self, input_dim, output_dim, res=False, withbn=False):
+        super(BaseConvHeterogeneGCN, self).__init__()
+        self.res = res
+        self.net_type = type
+        self.layer = GCNConv(input_dim, output_dim, flow='target_to_source')
         self.withbn = withbn
         if withbn:
             self.bn = torch.nn.BatchNorm1d(output_dim)
