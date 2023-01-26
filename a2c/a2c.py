@@ -151,7 +151,7 @@ class A2C:
 
             for i in range(batch_size):
                 observations.append(observation['graph'])
-                policy, value = self.network(observation)
+                policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
                 values[i] = value.detach().cpu().numpy()
                 vals[i] = value
                 probs_entropy[i] = - (policy * policy.log()).sum(-1)
@@ -176,7 +176,7 @@ class A2C:
             if dones[i] and not info['bad_transition']:
                 next_value = 0
             else:
-                next_value = self.network(observation)[1].detach().cpu().numpy()[0]
+                next_value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])[1].detach().cpu().numpy()[0]
 
             # Update episode_count
 
@@ -228,7 +228,13 @@ class A2C:
                 results_last_model.append(self.evaluate())
         else:
             results_last_model.append(self.evaluate())
-        torch.save(self.network, os.path.join(str(self.writer.get_logdir()), 'model_{}.pth'.format(str(np.mean(results_last_model)))))
+
+        if "output_model_path" in self.config.keys() and self.config["output_model_path"] is not None:
+            output_model_path = self.config["output_model_path"]
+        else:
+            output_model_path = os.path.join(self.writer.get_logdir(), f"model_{np.mean(results_last_model)}")
+
+        torch.save(self.network, output_model_path)
         os.remove(string_save)
         return best_time, np.mean(results_last_model)
 
@@ -295,7 +301,7 @@ class A2C:
 
         while not done:
             observation['graph'] = observation['graph'].to(device)
-            policy, value = self.network(observation)
+            policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
             # action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
             action_raw = policy.argmax().detach().cpu().numpy()
             ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
