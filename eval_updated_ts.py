@@ -64,7 +64,7 @@ data = {
     "ready": ready
 }
 
-out = model(visible_graph.x, visible_graph.edge_index, node_num, ready)
+out = model(visible_graph.x, visible_graph.edge_index, ready)
 
 print(out)
 
