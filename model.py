@@ -49,8 +49,14 @@ class Net(torch.nn.Module):
         return probs, v
 
 class ModelHeterogene(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim=128, ngcn=2, nmlp=1, nmlp_value=1, res=False, withbn=False):
+    def __init__(self, input_dim, hidden_dim=128, ngcn=2, nmlp=1, nmlp_value=1, res=False, withbn=False, jittable=False):
         super(ModelHeterogene, self).__init__()
+
+        if jittable:
+            GCNLayer = BaseConvHeterogeneGCNJittable
+        else:
+            GCNLayer = BaseConvHeterogeneGCN
+
         self.ngcn = ngcn
         self.nmlp = nmlp
         self.withbn = withbn
@@ -59,9 +65,9 @@ class ModelHeterogene(torch.nn.Module):
         self.listmlp = nn.ModuleList()
         self.listmlp_pass = nn.ModuleList()
         self.listmlp_value = nn.ModuleList()
-        self.listgcn.append(BaseConvHeterogeneGCN(input_dim, hidden_dim, res=res, withbn=withbn))
+        self.listgcn.append(GCNLayer(input_dim, hidden_dim, res=res, withbn=withbn))
         for _ in range(ngcn-1):
-            self.listgcn.append(BaseConvHeterogeneGCN(hidden_dim, hidden_dim, res=res, withbn=withbn))
+            self.listgcn.append(GCNLayer(hidden_dim, hidden_dim, res=res, withbn=withbn))
         for _ in range(nmlp-1):
             self.listmlp.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp.append(Linear(hidden_dim, 1))
@@ -103,7 +109,7 @@ class ModelHeterogene(torch.nn.Module):
 
 class BaseConvHeterogeneGCNJittable(torch.nn.Module):
     def __init__(self, input_dim, output_dim, res=False, withbn=False):
-        super(BaseConvHeterogeneGCN, self).__init__()
+        super(BaseConvHeterogeneGCNJittable, self).__init__()
         self.res = res
         self.net_type = type
         self.layer = GCNConv(input_dim, output_dim, flow='target_to_source').jittable()
