@@ -14,9 +14,15 @@ parser.add_argument('--nmlp', type=int, default=1, help='number of mlp to comput
 
 args = parser.parse_args()
 
-model = ModelHeterogene(input_dim=args.input_dim, hidden_dim=args.hidden_dim, ngcn=args.ngcn, nmlp=args.nmlp)
+print(f"Loading model from path {args.model_path}")
 
-print(model)
+model = ModelHeterogene(input_dim=args.input_dim, hidden_dim=args.hidden_dim, ngcn=args.ngcn, nmlp=args.nmlp, jittable=True)
+
+model.load_state_dict(torch.load(args.model_path), strict=False)
+model.eval()
 
 ts_model = torch.jit.script(model)
+
+print(f"Saving model to path {args.output_path}")
+
 ts_model.save(args.output_path)
