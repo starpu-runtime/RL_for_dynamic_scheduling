@@ -7,7 +7,7 @@ import string
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-from model import Net, SimpleNet, SimpleNet2, ResNetG, SimpleNetMax, SimpleNetW, SimpleNetWSage
+from model_old import Net, SimpleNet, SimpleNet2, ResNetG, SimpleNetMax, SimpleNetW, SimpleNetWSage, ModelHeterogene
 import pickle as pkl
 import torch
 from collections import namedtuple
