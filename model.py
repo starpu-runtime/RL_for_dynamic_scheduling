@@ -44,7 +44,7 @@ class Net(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -96,7 +96,7 @@ class ModelHeterogene(torch.nn.Module):
             x_pass = layer(x_pass)
 
         probs = torch.cat((x[ready.squeeze(1).to(torch.bool)].squeeze(-1), x_pass), dim=0)
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -189,7 +189,7 @@ class SimpleNet(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -225,7 +225,7 @@ class ResNetG(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -266,7 +266,7 @@ class SimpleNet2(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -302,7 +302,7 @@ class SimpleNetMax(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
@@ -339,7 +339,7 @@ class SimpleNetW(torch.nn.Module):
         prob_nothing = self.do_nothing(x_mean)
         probs = torch.cat((probs[ready.squeeze(1).to(torch.bool)].squeeze(-1), prob_nothing), dim=0)
 
-        probs = F.softmax(probs)
+        probs = F.softmax(probs, dim=0)
 
         return probs, v
 
