@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 # Training settings
 
 parser.add_argument('--model_path', type=str, default='none', help='path to load model')
+parser.add_argument('--output_model_path', type=str, default='none', help='path to save model')
 parser.add_argument('--num_env_steps', type=int, default=10 ** 4, help='num env steps')
 parser.add_argument('--num_processes', type=int, default=1, help='num proc')
 parser.add_argument('--lr', type=float, default=10 ** -2, help='learning rate')
