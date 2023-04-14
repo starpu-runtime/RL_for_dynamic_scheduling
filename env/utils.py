@@ -377,6 +377,10 @@ def random_ggen_fifo(n_vertex, max_in, max_out, noise=0):
                 edge_index=torch.tensor(edges), task_list=task_list)
 
 def ggen_cholesky(n_vertex, noise=0):
+    # P = POTRF
+    # S = SYRK
+    # T = TRSM
+    # G = GEMM
     dic_task_ch = {'p': 0, 's': 1, 't': 2, 'g': 3}
 
     def parcours_and_purge(s):
