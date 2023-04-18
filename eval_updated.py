@@ -14,14 +14,14 @@ config_enhanced = vars(args)
 
 model = ModelHeterogene(input_dim=16, ngcn=0, nmlp=1)
 
-print("Expected model:\n")
-print(model)
+# print("Expected model:\n")
+# print(model)
 
 data_model = torch.load(args.model_path)
 
-print("\nLoaded model: ")
-for d in data_model:
-    print(d)
+# print("\nLoaded model: ")
+# for d in data_model:
+#     print(d)
 
 model.load_state_dict(torch.load(args.model_path), strict=False)
 model.eval()
@@ -65,6 +65,12 @@ running_1 = running_1.unsqueeze(-1).float()
 
 visible_graph.x = torch.cat((n_succ, n_pred, one_hot_type, ready, running_1, remaining_time,
                              descendant_features_norm, node_type, min_ready_gpu, min_ready_cpu), dim=1)
+
+# print(f"n_succ: {n_succ}")
+# print(f"n_pred: {n_pred}")
+# print(f"one_hot_type: {one_hot_type}")
+# print(f"ready: {ready}")
+
 data = {
     "graph": visible_graph,
     "node_num": node_num,
@@ -79,4 +85,4 @@ print("Model's state_dict:")
 for param_tensor in model.state_dict():
     print(param_tensor, "\t", model.state_dict()[param_tensor].size())
 
-# torch.save(model.state_dict(), "test.pth")
+torch.save(model.state_dict(), "model_116.0_statedict_1.pth")
