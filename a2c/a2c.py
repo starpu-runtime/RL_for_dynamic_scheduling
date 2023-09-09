@@ -61,7 +61,7 @@ class A2C:
         #     model = torch.nn.DataParallel(model)
 
         self.network = model.to(device)
-        if config["model_path"] is not None and config["model_path"] != 'none':
+        if config["model_path"] is not None and config["model_path"] != 'none' and config["model_path"] != "":
             # self.network.load_state_dict(torch.load(config['model_path']))
             self.network = torch.load(config['model_path'])
         # Their optimizers
