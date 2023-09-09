@@ -84,21 +84,24 @@ class StarPUEnv(gym.Env):
         self.time = data['time']
         tasks_types = []
 
-        for task_type in data['tasks_types']:
-            task_numbers = torch.arange(4).reshape(1, 4)
-            tasks_types.append(task_numbers.eq(task_type).long())
+        if self.tasks_left == 0:
+            x = torch.tensor([]).reshape(0, 13)
+        else:
+            for task_type in data['tasks_types']:
+                task_numbers = torch.arange(4).reshape(1, 4)
+                tasks_types.append(task_numbers.eq(task_type).long())
 
-        x = torch.cat((
-            torch.tensor(data['number_successors']).reshape(number_tasks, 1),
-            torch.tensor(data['number_predecessors']).reshape(number_tasks, 1),
-            torch.vstack(tasks_types),
-            torch.tensor(data['tasks_ready']).reshape(number_tasks, 1),
-            torch.tensor(data['tasks_running']).reshape(number_tasks, 1),
-            torch.tensor(data['remaining_time']).reshape(number_tasks, 1),
-            torch.tensor(data['normalized_path_lengths']).reshape(number_tasks, 1),
-            torch.tensor(data['node_type']).repeat(number_tasks, 1),
-            torch.tensor(data['min_ready_gpu']).repeat(number_tasks, 1),
-            torch.tensor(data['min_ready_cpu']).repeat(number_tasks, 1)), dim=1)
+            x = torch.cat((
+                torch.tensor(data['number_successors']).reshape(number_tasks, 1),
+                torch.tensor(data['number_predecessors']).reshape(number_tasks, 1),
+                torch.vstack(tasks_types),
+                torch.tensor(data['tasks_ready']).reshape(number_tasks, 1),
+                torch.tensor(data['tasks_running']).reshape(number_tasks, 1),
+                torch.tensor(data['remaining_time']).reshape(number_tasks, 1),
+                torch.tensor(data['normalized_path_lengths']).reshape(number_tasks, 1),
+                torch.tensor(data['node_type']).repeat(number_tasks, 1),
+                torch.tensor(data['min_ready_gpu']).repeat(number_tasks, 1),
+                torch.tensor(data['min_ready_cpu']).repeat(number_tasks, 1)), dim=1)
 
         graph_data = TaskGraph(x,
                                torch.tensor(data['edge_index_vector']).reshape(2, len(data['edge_index_vector']) // 2),
@@ -123,6 +126,8 @@ class StarPUEnv(gym.Env):
 
         # always false until there are no more tasks to schedule
         done = self.tasks_left == 0
+
+        print("Tasks left: ", self.tasks_left)
 
         # self.time -> time since start of execution
         reward = - self.time if done else 0
