@@ -18,6 +18,8 @@ from gym.wrappers import Monitor
 
 from collections import deque
 
+from env.env_classes import trace_file
+
 
 def make_seed(seed):
     np.random.seed(seed=seed)
@@ -202,15 +204,21 @@ class A2C:
                     current_time = self.evaluate()
                 self.writer.add_scalar('test time', current_time, n_step)
                 print("comparing current time: {} with previous best: {}".format(current_time, best_time))
+
                 if current_time < best_time:
                     print("saving model")
                     string_save = os.path.join(str(self.writer.get_logdir()), 'model{}.pth'.format(self.random_id))
                     torch.save(self.network, string_save)
                     best_time = current_time
+
+                    trace_file.save_best_trace("trace_best.txt")
+
                     # current_tab = []
                     # for _ in range(10):
                     #     current_tab.append(self.evaluate())
                     # current_mean = np.mean(current_tab)
+
+                trace_file.open_trace("trace.txt")
 
             if len(reward_log) > 0:
                 end = time.time()

@@ -6,6 +6,35 @@ from env.utils import *
 from env.utils import compute_graph
 import heft
 
+import shutil
+
+
+class Trace:
+    def __init__(self, filename):
+        self.trace_file = None
+        self.filename = filename
+        self.open_trace(self.filename)
+
+    def open_trace(self, filename):
+        if self.trace_file is not None:
+            self.trace_file.close()
+
+        self.filename = filename
+        self.trace_file = open(filename, "w")
+        self.trace_file.write("worker_id,worker_type,task_type,start_time,duration\n")
+
+    def save_best_trace(self, new_filename):
+        self.trace_file.close()
+        self.trace_file = None
+        shutil.copyfile(self.filename, new_filename)
+
+    def write(self, data):
+        self.trace_file.write(data)
+
+
+trace_file = Trace("trace.txt")
+
+
 class DAGEnv(gym.Env):
     def __init__(self, n, node_types, window, env_type, noise=False):
         if isinstance(node_types, int):
@@ -93,6 +122,8 @@ class DAGEnv(gym.Env):
         self.ready_proc = np.zeros(self.p)
         # self.ready_tasks.append(0)
         self.current_proc = 0
+
+        trace_file.open_trace("trace.txt")
 
         # compute initial doable tasks
 
@@ -208,6 +239,9 @@ class DAGEnv(gym.Env):
             self.processed[self.task_data.task_list[action].barcode] = [processor, self.time]
             self.running_task2proc[action] = processor
             self.running[processor] = action
+
+            trace_file.write(f"{processor},{self.cluster.node_types[processor]},{task_types[self.task_data.task_list[action].type]},{self.time},{self.task_data.task_list[action].durations[self.cluster.node_types[processor]]}\n")
+            # print(f"{processor},{self.cluster.node_types[processor]},{task_types[self.task_data.task_list[action].type]},{self.time},{self.task_data.task_list[action].durations[self.cluster.node_types[processor]]}")
 
     def _compute_state(self):
         visible_graph, node_num = compute_sub_graph(self.task_data,

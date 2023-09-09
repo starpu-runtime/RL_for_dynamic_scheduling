@@ -13,6 +13,8 @@ import os
 import pickle as pkl
 # task type 0: POTRF 1:SYRK 2:TRSM 3: GEMMS
 
+task_types = ["POTRF", "SYRK", "TRSM", "GEMM"]
+
 # Heterougenous case
 durations_cpu = [18, 57, 52, 95, 0]
 durations_gpu = [11, 2, 8, 3, 0]
