@@ -157,7 +157,7 @@ class StarPUEnv(gym.Env):
         self.task_count = 0
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
-        if not self.has_just_started:
+        if not self.has_just_started and not self.tasks_left == 0:
             print(f"{bcolors.WARNING}[training_script] Telling scheduler to reset{bcolors.ENDC}")
             append_queue(action_queue, -2)
 
