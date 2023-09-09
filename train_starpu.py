@@ -15,6 +15,7 @@ from model import ModelHeterogene
 
 action_queue = Queue()
 data_queue = Queue()
+end_queue = Queue()
 
 parser = argparse.ArgumentParser()
 
@@ -76,17 +77,20 @@ class StarPUEnv(gym.Env):
         self.has_just_started = True
         self.task_count = 0
         self.tasks_left = 0
+        self.node_num = None
+        self.ready_tasks = None
 
     def read_scheduler_data(self, queue):
-        data = read_queue(queue)
-        number_tasks = data['number_tasks']
-        self.tasks_left = data['tasks_left']
-        self.time = data['time']
-        tasks_types = []
+        is_done = read_queue(end_queue)
 
-        if self.tasks_left == 0:
-            x = torch.tensor([]).reshape(0, 13)
-        else:
+        if not is_done:
+            data = read_queue(queue)
+            number_tasks = data['number_tasks']
+            self.tasks_left = data['tasks_left']
+            self.ready_tasks = torch.tensor(data['tasks_ready']).reshape(number_tasks, 1)
+            self.time = data['time']
+            tasks_types = []
+
             for task_type in data['tasks_types']:
                 task_numbers = torch.arange(4).reshape(1, 4)
                 tasks_types.append(task_numbers.eq(task_type).long())
@@ -102,12 +106,20 @@ class StarPUEnv(gym.Env):
                 torch.tensor(data['node_type']).repeat(number_tasks, 1),
                 torch.tensor(data['min_ready_gpu']).repeat(number_tasks, 1),
                 torch.tensor(data['min_ready_cpu']).repeat(number_tasks, 1)), dim=1)
+            edge_index = torch.tensor(data['edge_index_vector']).reshape(2, len(data['edge_index_vector']) // 2)
 
-        graph_data = TaskGraph(x,
-                               torch.tensor(data['edge_index_vector']).reshape(2, len(data['edge_index_vector']) // 2),
-                               None)
+        else:
+            self.tasks_left = 0
+            self.ready_tasks = torch.tensor([]).reshape(0, 1)
 
-        return data, graph_data, number_tasks
+            x = torch.tensor([]).reshape(0, 13)
+            edge_index = torch.tensor([]).reshape(2, 0)
+            number_tasks = 0
+
+        graph_data = TaskGraph(x, edge_index, None)
+        self.node_num = torch.arange(number_tasks).reshape(number_tasks, 1)
+
+        return graph_data
 
     def step(self, action):
         self.num_steps += 1
@@ -121,7 +133,7 @@ class StarPUEnv(gym.Env):
         append_queue(action_queue, int(action))
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
-        data, graph_data, number_tasks = self.read_scheduler_data(data_queue)
+        graph_data = self.read_scheduler_data(data_queue)
         print(f"{bcolors.WARNING}[training_script] Step graph data: {graph_data}{bcolors.ENDC}")
 
         # always false until there are no more tasks to schedule
@@ -136,8 +148,8 @@ class StarPUEnv(gym.Env):
 
         info = {'episode': {'r': reward, 'length': self.num_steps, 'time': self.time}, 'bad_transition': False}
 
-        return {'graph': graph_data, 'node_num': torch.arange(number_tasks).reshape(number_tasks, 1),
-                'ready': torch.tensor(data['tasks_ready']).reshape(number_tasks, 1)}, reward, done, info
+        return {'graph': graph_data, 'node_num': self.node_num,
+                'ready': self.ready_tasks}, reward, done, info
 
     def reset(self):
         self.time = 0
@@ -150,13 +162,13 @@ class StarPUEnv(gym.Env):
             append_queue(action_queue, -2)
 
         print(f"{bcolors.WARNING}[training_script] Waiting for scheduler to send initial data{bcolors.ENDC}")
-        data, graph_data, number_tasks = self.read_scheduler_data(data_queue)
+        graph_data = self.read_scheduler_data(data_queue)
         print(f"{bcolors.WARNING}[training_script] Reset graph data: {graph_data}{bcolors.ENDC}")
 
         self.has_just_started = False
 
-        return {'graph': graph_data, 'node_num': torch.arange(number_tasks).reshape(number_tasks, 1),
-                'ready': torch.tensor(data['tasks_ready']).reshape(number_tasks, 1)}
+        return {'graph': graph_data, 'node_num': self.node_num,
+                'ready': self.ready_tasks}
 
     def render(self, mode="human"):
         pass
