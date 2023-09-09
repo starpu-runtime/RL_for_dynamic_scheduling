@@ -145,6 +145,8 @@ class A2C:
         best_time = 100000
 
         while n_step < self.config['num_env_steps']:
+            print(f"Step: {n_step}/{self.config['num_env_steps']}")
+
             # Lets collect one batch
 
             probs = torch.zeros(batch_size, dtype=torch.float, device=device)
@@ -152,8 +154,15 @@ class A2C:
             probs_entropy = torch.zeros(batch_size, dtype=torch.float, device=device)
 
             for i in range(batch_size):
+                print(f"Batch: {i}/{batch_size}")
+
                 observations.append(observation['graph'])
                 policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
+
+                print("All data: ", observation['graph'])
+                print("Tasks ready in model: ", observation['ready'])
+                print("After inference: ", policy, value)
+
                 values[i] = value.detach().cpu().numpy()
                 vals[i] = value
                 probs_entropy[i] = - (policy * policy.log()).sum(-1)
@@ -164,11 +173,18 @@ class A2C:
                 probs[i] = policy[action_raw]
                 ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
                 actions[i] = -1 if action_raw == policy.shape[-1] -1 else observation['node_num'][ready_nodes][action_raw]
+
+                print("Actions: ", actions)
+
                 observation, rewards[i], dones[i], info = self.env.step(actions[i])
                 observation['graph'] = observation['graph'].to(device)
                 n_step += 1
 
+                print(f"Step increase: {n_step}")
+
                 if dones[i]:
+                    print(dones)
+                    print(f"Done at step {i}, should reset")
                     observation = self.env.reset()
                     observation['graph'] = observation['graph'].to(device)
                     reward_log.append(rewards[i])
@@ -308,16 +324,33 @@ class A2C:
         done = False
 
         while not done:
+            print("Evaluating")
             observation['graph'] = observation['graph'].to(device)
+
+            print("Data given to network:")
+            print(observation['graph'])
+            print(observation['ready'])
+
             policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
+
+            print("Policy: ", policy)
+            print("Value: ", value)
+
             # action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
             action_raw = policy.argmax().detach().cpu().numpy()
             ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
             action = -1 if action_raw == policy.shape[-1] - 1 else \
                 observation['node_num'][ready_nodes][action_raw].detach().numpy()[0]
+
+            print("Action raw: ", action_raw)
+            print("Action: ", action)
+
             try :
                 observation, reward, done, info = env.step(action)
             except KeyError:
                 print(chelou)
+
+        print("Finally done")
+
         return env.time
 
