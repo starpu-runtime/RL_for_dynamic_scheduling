@@ -16,8 +16,8 @@ import pickle as pkl
 task_types = ["POTRF", "SYRK", "TRSM", "GEMM"]
 
 # Heterougenous case
-durations_cpu = [18, 57, 52, 95, 0]
-durations_gpu = [11, 2, 8, 3, 0]
+durations_cpu = [18.85, 87.78, 45.65, 87.78, 0]
+durations_gpu = [5.37, 2.82, 6.4, 2.82, 0]
 
 durations_cpu_lu = [18, 95, 52, 52]
 durations_gpu_lu = [11, 3, 8, 8]
@@ -78,7 +78,7 @@ class TaskGraph(Data):
     def __init__(self, x, edge_index, task_list):
         Data.__init__(self, x, edge_index.to(torch.long))
         self.task_list = np.array(task_list)
-        self.task_to_num = {v: k for (k, v) in enumerate(self.task_list)}
+        # self.task_to_num = {v: k for (k, v) in enumerate(self.task_list)}
         self.n = len(self.x)
 
     def render(self, root=None):
