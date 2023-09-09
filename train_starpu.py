@@ -71,8 +71,6 @@ class bcolors:
 
 class StarPUEnv(gym.Env):
     def __init__(self):
-        # self.action_queue = action_queue
-        # self.data_queue = data_queue
         self.num_steps = 0
         self.time = 0
         self.has_just_started = True
@@ -194,17 +192,3 @@ def train(argv=None):
     agent = A2C(config_enhanced, env, model=model, writer=writer)
 
     best_perf, _ = agent.training_batch()
-
-    # while True:
-    #     # Read data placed by the scheduler
-    #     print("Python: Waiting for data queue")
-    #     data = read_queue(data_queue)
-    #     print("Python: Received from data queue: ", data)
-    #
-    #     # Pass data to model
-    #     probabilities = [0.7, 0.2, 0.3]
-    #
-    #     # Send data back to the scheduler (reward, probabilities, etc.)
-    #     # append_queue(data_queue, [probabilities, ...])
-    #     # Send action to the scheduler
-    #     append_queue(action_queue, probabilities)
