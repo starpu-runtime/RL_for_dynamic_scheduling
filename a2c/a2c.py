@@ -137,8 +137,8 @@ class A2C:
         log_ratio = 0
         best_reward = 100000
 
-        while n_step < self.config['num_env_steps']:
-            training_logger.info(f"Step: {n_step}/{self.config['num_env_steps']}")
+        while not self.env.converged:
+            training_logger.info(f"Step: {n_step}")
 
             # Lets collect one batch
 
@@ -147,7 +147,7 @@ class A2C:
             probs_entropy = torch.zeros(num_steps, dtype=torch.float, device=device)
             done = False
 
-            while not done and n_step < self.config['num_env_steps']:
+            while not self.env.converged and not done and n_step < self.config['num_env_steps']:
                 observations.append(observation['graph'])
                 policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
 
@@ -250,8 +250,10 @@ class A2C:
                 training_logger.info(f"Scheduler learning rate: {self.scheduler.get_lr()}")
                 self.scheduler.step(int(n_step / batch_size))
 
-            observation = self.env.reset()
-            observation['graph'] = observation['graph'].to(device)
+            if not self.env.has_converged():
+                training_logger.warn(f"Testing convergence: {self.env.converged}")
+                observation = self.env.reset()
+                observation['graph'] = observation['graph'].to(device)
 
         self.network = torch.load(string_save)
         results_last_model = []
@@ -259,7 +261,9 @@ class A2C:
             for _ in range(5):
                 results_last_model.append(self.evaluate())
         else:
-            results_last_model.append(self.env.time)
+            results_last_model.append(- self.env.reward if self.env.reward else self.env.time)
+
+        training_logger.warn("Saving final model")
 
         if "output_model_path" in self.config.keys() and self.config["output_model_path"] is not None:
             output_model_path = self.config["output_model_path"]

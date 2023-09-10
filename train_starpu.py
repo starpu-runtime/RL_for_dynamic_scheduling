@@ -1,6 +1,6 @@
 import argparse
 from pprint import pformat
-from queue import Queue
+from queue import Queue, Empty
 
 import gym
 import torch
@@ -17,6 +17,9 @@ from common_logging import training_logger
 action_queue = Queue()
 data_queue = Queue()
 end_queue = Queue()
+
+convergence_status_queue = Queue()
+convergence_ack_queue = Queue()
 
 parser = argparse.ArgumentParser()
 
@@ -69,6 +72,7 @@ class StarPUEnv(gym.Env):
         self.node_num = None
         self.ready_tasks = None
         self.reward = 0
+        self.converged = False
 
     def read_scheduler_data(self, queue):
         is_done = read_queue(end_queue)
@@ -165,6 +169,11 @@ class StarPUEnv(gym.Env):
     def render(self, mode="human"):
         pass
 
+    def has_converged(self):
+        self.converged = read_queue(convergence_status_queue)
+
+        return self.converged
+
 
 def read_queue(queue):
     return queue.get(block=True)
@@ -199,3 +208,8 @@ def train(argv=None):
     agent = A2C(config_enhanced, env, model=model, writer=writer)
 
     best_perf, _ = agent.training()
+
+    training_logger.warn("Warning the scheduler it can now stop")
+    # Warn the scheduler it can now gracefully stop
+    append_queue(convergence_ack_queue, 1)
+    return 0
