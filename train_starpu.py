@@ -1,5 +1,5 @@
 import argparse
-from pprint import pprint
+from pprint import pformat
 from queue import Queue
 
 import gym
@@ -9,6 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from a2c import A2C
 from env.utils import TaskGraph
 from model import ModelHeterogene
+from common_logging import training_logger
 
 # import numpy as np
 # import torch
@@ -56,18 +57,6 @@ parser.add_argument('--window', type=int, default=0, help='window')
 parser.add_argument('--noise', type=float, default=0, help='noise')
 parser.add_argument('--env_type', type=str, default='QR', help='chol or LU or QR')
 parser.add_argument('--seed_env', type=int, default=42, help='Random seed env ')
-
-
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
 
 class StarPUEnv(gym.Env):
@@ -129,22 +118,22 @@ class StarPUEnv(gym.Env):
 
         # Tell the scheduler which action to take right now
         # (schedule the task associated to the ID returned, or skip if action > nb_tasks)
-        print(f"{bcolors.WARNING}[training_script] Sending action {action} to scheduler{bcolors.ENDC}")
+        training_logger.info(f"Sending action {action} to scheduler")
         append_queue(action_queue, int(action))
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
         graph_data = self.read_scheduler_data(data_queue)
-        print(f"{bcolors.WARNING}[training_script] Step graph data: {graph_data}{bcolors.ENDC}")
+        training_logger.info(f"Graph data: {graph_data}")
 
         # always false until there are no more tasks to schedule
         done = self.tasks_left == 0
 
-        print("Tasks left: ", self.tasks_left)
+        training_logger.info(f"Tasks left: {self.tasks_left}")
 
         # self.time -> time since start of execution
         reward = - self.time if done else 0
 
-        print(f"{bcolors.WARNING}[training_script] Time: {self.time}, Reward: {reward}{bcolors.ENDC}")
+        training_logger.info(f"Time: {self.time}, Reward: {reward}")
 
         info = {'episode': {'r': reward, 'length': self.num_steps, 'time': self.time}, 'bad_transition': False}
 
@@ -158,12 +147,12 @@ class StarPUEnv(gym.Env):
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
         if not self.has_just_started and not self.tasks_left == 0:
-            print(f"{bcolors.WARNING}[training_script] Telling scheduler to reset{bcolors.ENDC}")
+            training_logger.info(f"Telling scheduler to reset")
             append_queue(action_queue, -2)
 
-        print(f"{bcolors.WARNING}[training_script] Waiting for scheduler to send initial data{bcolors.ENDC}")
+        training_logger.info("Waiting for scheduler to send initial data")
         graph_data = self.read_scheduler_data(data_queue)
-        print(f"{bcolors.WARNING}[training_script] Reset graph data: {graph_data}{bcolors.ENDC}")
+        training_logger.info(f"Reset graph data: {graph_data}")
 
         self.has_just_started = False
 
@@ -186,15 +175,13 @@ def train(argv=None):
     if argv is None:
         argv = {}
     else:
-        print(f"{bcolors.WARNING}[training_script] Received arguments from StarPU:")
-        pprint(argv)
+        training_logger.info(f"Received arguments from StarPU:\n{pformat(argv)}")
 
     args = parser.parse_args(argv)
     config_enhanced = vars(args)
     writer = SummaryWriter('runs')
 
-    print(f"{bcolors.WARNING}[training_script] Current config_enhanced is:")
-    pprint(config_enhanced)
+    training_logger.info(f"Current config_enhanced is:\n{pformat(config_enhanced)}")
 
     env = StarPUEnv()
 

@@ -18,6 +18,7 @@ from gym.wrappers import Monitor
 
 from collections import deque
 
+from common_logging import training_logger
 from env.env_classes import trace_file
 
 
@@ -137,7 +138,7 @@ class A2C:
         best_time = 100000
 
         while n_step < self.config['num_env_steps']:
-            print(f"Step: {n_step}/{self.config['num_env_steps']}")
+            training_logger.info(f"Step: {n_step}/{self.config['num_env_steps']}")
 
             # Lets collect one batch
 
@@ -160,11 +161,12 @@ class A2C:
                 try:
                     action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
                 except:
-                    print("Graph X: ", observation['graph'].x)
-                    print("Edge Index: ", observation['graph'].edge_index)
-                    print("Ready: ", observation['ready'])
-                    print("Policy: ", policy)
-                    print("chelou")
+                    training_logger.warn("Something unexpected as happened during inference")
+                    training_logger.warn(f"Graph X: {observation['graph'].x}")
+                    training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
+                    training_logger.warn(f"Ready: {observation['ready']}")
+                    training_logger.warn(f"Policy: {policy}")
+
                 probs[n_step] = policy[action_raw]
                 ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
 
@@ -183,12 +185,11 @@ class A2C:
                 observation, rewards[n_step], dones[n_step], info = self.env.step(actions[n_step])
                 observation['graph'] = observation['graph'].to(device)
 
-                print(f"Step increase: {n_step}")
+                training_logger.info(f"Step increase: {n_step}")
 
                 if dones[n_step]:
                     done = dones[n_step]
-                    print(dones)
-                    print(f"Done at step {n_step} with reward {rewards[n_step]}, should reset")
+                    training_logger.info(f"Done at step {n_step} with reward {rewards[n_step]}, should reset")
                     reward_log.append(rewards[n_step])
                     time_log.append(info['episode']['time'])
 
@@ -207,10 +208,10 @@ class A2C:
             loss_value, loss_actor, loss_entropy = self.optimize_model(observations, actions, probs, probs_entropy,
                                                                        vals, returns, advantages, step=n_step)
 
-            print("Log ratio: ", log_ratio)
+            training_logger.info(f"Log ratio: {log_ratio}")
 
             if self.writer is not None and log_ratio * self.config['log_interval'] < n_step:
-                print('saving model if better than the previous one')
+                training_logger.info('saving model if better than the previous one')
                 log_ratio += 1
                 self.writer.add_scalar('reward', np.mean(reward_log), n_step)
                 self.writer.add_scalar('time', np.mean(time_log), n_step)
@@ -223,10 +224,10 @@ class A2C:
                 else:
                     current_time = self.env.time
                 self.writer.add_scalar('test time', current_time, n_step)
-                print("comparing current time: {} with previous best: {}".format(current_time, best_time))
+                training_logger.info("comparing current time: {} with previous best: {}".format(current_time, best_time))
 
                 if current_time < best_time:
-                    print("saving model")
+                    training_logger.warn("saving model")
                     string_save = os.path.join(str(self.writer.get_logdir()), 'model{}.pth'.format(self.random_id))
                     torch.save(self.network, string_save)
                     best_time = current_time
@@ -242,11 +243,11 @@ class A2C:
 
             if len(reward_log) > 0:
                 end = time.time()
-                print('step ', n_step, '\n reward: ', np.mean(reward_log))
-                print('FPS: ', int(n_step / (end - start)))
+                training_logger.info(f'step {n_step}, reward: {np.mean(reward_log)}')
+                training_logger.info(f'FPS: {int(n_step / (end - start))}')
 
             if self.scheduler is not None:
-                print(self.scheduler.get_lr())
+                training_logger.info(f"Scheduler learning rate: {self.scheduler.get_lr()}")
                 self.scheduler.step(int(n_step / batch_size))
 
             observation = self.env.reset()
