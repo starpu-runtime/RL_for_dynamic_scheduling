@@ -161,7 +161,7 @@ class A2C:
                 try:
                     action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
                 except:
-                    training_logger.warn("Something unexpected as happened during inference")
+                    training_logger.warn("Something unexpected has happened during inference")
                     training_logger.warn(f"Graph X: {observation['graph'].x}")
                     training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
                     training_logger.warn(f"Ready: {observation['ready']}")
