@@ -115,6 +115,161 @@ class A2C:
         advantages = returns - values
         return returns, advantages
 
+    def training(self):
+        start = time.time()
+        reward_log = deque(maxlen=10)
+        time_log = deque(maxlen=10)
+
+        batch_size = self.config['trajectory_length']
+        num_steps = self.config['num_env_steps']
+
+        actions = np.zeros((num_steps,), dtype=np.int)
+        dones = np.zeros((num_steps,), dtype=np.bool)
+        rewards, values = np.empty((2, num_steps), dtype=np.float)
+        observations = []
+        observation = self.env.reset()
+        observation['graph'] = observation['graph'].to(device)
+        rewards_test = []
+        best_reward_mean = -1000
+
+        n_step = 0
+        log_ratio = 0
+        best_time = 100000
+
+        while n_step < self.config['num_env_steps']:
+            print(f"Step: {n_step}/{self.config['num_env_steps']}")
+
+            # Lets collect one batch
+
+            probs = torch.zeros(num_steps, dtype=torch.float, device=device)
+            vals = torch.zeros(num_steps, dtype=torch.float, device=device)
+            probs_entropy = torch.zeros(num_steps, dtype=torch.float, device=device)
+            done = False
+
+            while not done and n_step < self.config['num_env_steps']:
+                observations.append(observation['graph'])
+                policy, value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])
+
+                # print("All data: ", observation['graph'])
+                # print("Tasks ready in model: ", observation['ready'])
+                # print("After inference: ", policy, value)
+
+                values[n_step] = value.detach().cpu().numpy()
+                vals[n_step] = value
+                probs_entropy[n_step] = - (policy * policy.log()).sum(-1)
+                try:
+                    action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
+                except:
+                    print("Graph X: ", observation['graph'].x)
+                    print("Edge Index: ", observation['graph'].edge_index)
+                    print("Ready: ", observation['ready'])
+                    print("Policy: ", policy)
+                    print("chelou")
+                probs[n_step] = policy[action_raw]
+                ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
+
+                # print("Ready nodes: ", ready_nodes)
+                # print("Node num: ", observation["node_num"])
+
+                actions[n_step] = -1 if action_raw == policy.shape[-1] -1 else observation['node_num'][ready_nodes][action_raw]
+
+                # print("Policy: ", policy)
+                # print("Action raw: ", action_raw)
+                # print("Policy shape: ", policy.shape[-1])
+                # print("Action from step: ", actions[n_step])
+
+                # print("Actions: ", actions)
+
+                observation, rewards[n_step], dones[n_step], info = self.env.step(actions[n_step])
+                observation['graph'] = observation['graph'].to(device)
+
+                print(f"Step increase: {n_step}")
+
+                if dones[n_step]:
+                    done = dones[n_step]
+                    print(dones)
+                    print(f"Done at step {n_step} with reward {rewards[n_step]}, should reset")
+                    reward_log.append(rewards[n_step])
+                    time_log.append(info['episode']['time'])
+
+                n_step += 1
+
+            # If our episode didn't end on the last step we need to compute the value for the last state
+            if dones[n_step - 1] and not info['bad_transition']:
+                next_value = 0
+            else:
+                next_value = self.network(observation['graph'].x, observation['graph'].edge_index, observation['ready'])[1].detach().cpu().numpy()[0]
+
+            # Compute returns and advantages
+            returns, advantages = self._returns_advantages(rewards, dones, values, next_value)
+
+            # Learning step !
+            loss_value, loss_actor, loss_entropy = self.optimize_model(observations, actions, probs, probs_entropy,
+                                                                       vals, returns, advantages, step=n_step)
+
+            print("Log ratio: ", log_ratio)
+
+            if self.writer is not None and log_ratio * self.config['log_interval'] < n_step:
+                print('saving model if better than the previous one')
+                log_ratio += 1
+                self.writer.add_scalar('reward', np.mean(reward_log), n_step)
+                self.writer.add_scalar('time', np.mean(time_log), n_step)
+                self.writer.add_scalar('critic_loss', loss_value, n_step)
+                self.writer.add_scalar('actor_loss', loss_actor, n_step)
+                self.writer.add_scalar('entropy', loss_entropy, n_step)
+
+                if self.noise > 0:
+                    current_time = np.mean([self.evaluate(), self.evaluate(), self.evaluate()])
+                else:
+                    current_time = self.env.time
+                self.writer.add_scalar('test time', current_time, n_step)
+                print("comparing current time: {} with previous best: {}".format(current_time, best_time))
+
+                if current_time < best_time:
+                    print("saving model")
+                    string_save = os.path.join(str(self.writer.get_logdir()), 'model{}.pth'.format(self.random_id))
+                    torch.save(self.network, string_save)
+                    best_time = current_time
+
+                    trace_file.save_best_trace("trace_best.txt")
+
+                    # current_tab = []
+                    # for _ in range(10):
+                    #     current_tab.append(self.evaluate())
+                    # current_mean = np.mean(current_tab)
+
+                trace_file.open_trace("trace.txt")
+
+            if len(reward_log) > 0:
+                end = time.time()
+                print('step ', n_step, '\n reward: ', np.mean(reward_log))
+                print('FPS: ', int(n_step / (end - start)))
+
+            if self.scheduler is not None:
+                print(self.scheduler.get_lr())
+                self.scheduler.step(int(n_step / batch_size))
+
+            observation = self.env.reset()
+            observation['graph'] = observation['graph'].to(device)
+
+        self.network = torch.load(string_save)
+        results_last_model = []
+        if self.noise > 0:
+            for _ in range(5):
+                results_last_model.append(self.evaluate())
+        else:
+            results_last_model.append(self.env.time)
+
+        if "output_model_path" in self.config.keys() and self.config["output_model_path"] is not None:
+            output_model_path = self.config["output_model_path"]
+        else:
+            output_model_path = os.path.join(self.writer.get_logdir(), f"model_{np.mean(results_last_model)}")
+
+        torch.save(self.network, output_model_path)
+        os.remove(string_save)
+        return best_time, np.mean(results_last_model)
+
+
     def training_batch(self):
         """Perform a training by batch
 

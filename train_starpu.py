@@ -208,4 +208,4 @@ def train(argv=None):
 
     agent = A2C(config_enhanced, env, model=model, writer=writer)
 
-    best_perf, _ = agent.training_batch()
+    best_perf, _ = agent.training()
