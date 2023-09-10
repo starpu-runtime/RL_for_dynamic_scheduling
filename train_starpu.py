@@ -26,6 +26,7 @@ parser = argparse.ArgumentParser()
 # Training settings
 parser.add_argument('--model_path', type=str, default='none', help='path to load model')
 parser.add_argument('--output_model_path', type=str, default='none', help='path to save model')
+parser.add_argument('--torchscript_output_model_path', type=str, default='none', help='path to save torchscript model')
 parser.add_argument('--num_env_steps', type=int, default=10 ** 4, help='num env steps')
 parser.add_argument('--num_processes', type=int, default=1, help='num proc')
 parser.add_argument('--lr', type=float, default=10 ** -2, help='learning rate')
@@ -183,6 +184,19 @@ def append_queue(queue, data):
     queue.put(data)
 
 
+def convert_model(args, model_path):
+    model = torch.load(model_path)
+
+    model_state_dict = ModelHeterogene(input_dim=args.input_dim, hidden_dim=args.hidden_dim, ngcn=args.ngcn, nmlp=args.nmlp,
+                            jittable=True)
+    model_state_dict.load_state_dict(model.state_dict(), strict=False)
+    model_torchscript = torch.jit.script(model_state_dict)
+
+    training_logger.info(f"Saving model to path")
+
+    model_torchscript.save(args.torchscript_output_model_path)
+
+
 def train(argv=None):
     if argv is None:
         argv = {}
@@ -208,6 +222,8 @@ def train(argv=None):
     agent = A2C(config_enhanced, env, model=model, writer=writer)
 
     best_perf, _ = agent.training()
+
+    convert_model(args, args.output_model_path)
 
     training_logger.warn("Warning the scheduler it can now stop")
     # Warn the scheduler it can now gracefully stop
