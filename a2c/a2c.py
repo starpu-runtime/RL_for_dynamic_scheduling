@@ -135,7 +135,7 @@ class A2C:
 
         n_step = 0
         log_ratio = 0
-        best_time = 100000
+        best_reward = 100000
 
         while n_step < self.config['num_env_steps']:
             training_logger.info(f"Step: {n_step}/{self.config['num_env_steps']}")
@@ -220,17 +220,17 @@ class A2C:
                 self.writer.add_scalar('entropy', loss_entropy, n_step)
 
                 if self.noise > 0:
-                    current_time = np.mean([self.evaluate(), self.evaluate(), self.evaluate()])
+                    reward = np.mean([self.evaluate(), self.evaluate(), self.evaluate()])
                 else:
-                    current_time = self.env.time
-                self.writer.add_scalar('test time', current_time, n_step)
-                training_logger.info("comparing current time: {} with previous best: {}".format(current_time, best_time))
+                    reward = - self.env.reward if self.env.reward else self.env.time
+                self.writer.add_scalar('test time', reward, n_step)
+                training_logger.info("comparing current reward: {} with previous best: {}".format(reward, best_reward))
 
-                if current_time < best_time:
+                if reward < best_reward:
                     training_logger.warn("saving model")
                     string_save = os.path.join(str(self.writer.get_logdir()), 'model{}.pth'.format(self.random_id))
                     torch.save(self.network, string_save)
-                    best_time = current_time
+                    best_reward = reward
 
                     trace_file.save_best_trace("trace_best.txt")
 
@@ -268,7 +268,7 @@ class A2C:
 
         torch.save(self.network, output_model_path)
         os.remove(string_save)
-        return best_time, np.mean(results_last_model)
+        return best_reward, np.mean(results_last_model)
 
 
     def training_batch(self):

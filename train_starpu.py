@@ -68,6 +68,7 @@ class StarPUEnv(gym.Env):
         self.tasks_left = 0
         self.node_num = None
         self.ready_tasks = None
+        self.reward = 0
 
     def read_scheduler_data(self, queue):
         is_done = read_queue(end_queue)
@@ -98,6 +99,7 @@ class StarPUEnv(gym.Env):
             edge_index = torch.tensor(data['edge_index_vector']).reshape(2, len(data['edge_index_vector']) // 2)
 
         else:
+            self.reward = read_queue(queue)
             self.tasks_left = 0
             self.ready_tasks = torch.tensor([]).reshape(0, 1)
 
@@ -131,9 +133,9 @@ class StarPUEnv(gym.Env):
         training_logger.info(f"Tasks left: {self.tasks_left}")
 
         # self.time -> time since start of execution
-        reward = - self.time if done else 0
+        reward = self.reward if done else 0
 
-        training_logger.info(f"Time: {self.time}, Reward: {reward}")
+        training_logger.info(f"Reward: {reward}")
 
         info = {'episode': {'r': reward, 'length': self.num_steps, 'time': self.time}, 'bad_transition': False}
 
@@ -144,6 +146,7 @@ class StarPUEnv(gym.Env):
         self.time = 0
         self.num_steps = 0
         self.task_count = 0
+        self.reward = 0
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
         if not self.has_just_started and not self.tasks_left == 0:
