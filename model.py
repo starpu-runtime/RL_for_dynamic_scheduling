@@ -1,16 +1,9 @@
-from typing import Dict
-
-import numpy as np
 import torch
 import torch.nn as nn
-from torch import Tensor
-from torch.nn import Linear
-from torch_geometric.data import Data
 import torch.nn.functional as F
+from torch.nn import Linear
 from torch_geometric.nn import GCNConv
 from torch_geometric.nn.conv import SAGEConv
-
-from env.utils import TaskGraph
 
 
 class Net(torch.nn.Module):
@@ -26,7 +19,7 @@ class Net(torch.nn.Module):
         self.value = Linear(128, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
 
         x = self.conv_succ1(x, edge_index)
@@ -48,8 +41,11 @@ class Net(torch.nn.Module):
 
         return probs, v
 
+
 class ModelHeterogene(torch.nn.Module):
-    def __init__(self, input_dim, hidden_dim=128, ngcn=2, nmlp=1, nmlp_value=1, res=False, withbn=False, jittable=False):
+    def __init__(
+        self, input_dim, hidden_dim=128, ngcn=2, nmlp=1, nmlp_value=1, res=False, withbn=False, jittable=False
+    ):
         super(ModelHeterogene, self).__init__()
 
         if jittable:
@@ -66,17 +62,17 @@ class ModelHeterogene(torch.nn.Module):
         self.listmlp_pass = nn.ModuleList()
         self.listmlp_value = nn.ModuleList()
         self.listgcn.append(GCNLayer(input_dim, hidden_dim, res=res, withbn=withbn))
-        for _ in range(ngcn-1):
+        for _ in range(ngcn - 1):
             self.listgcn.append(GCNLayer(hidden_dim, hidden_dim, res=res, withbn=withbn))
-        for _ in range(nmlp-1):
+        for _ in range(nmlp - 1):
             self.listmlp.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp.append(Linear(hidden_dim, 1))
-        for _ in range(nmlp_value-1):
+        for _ in range(nmlp_value - 1):
             self.listmlp_value.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp_value.append(Linear(hidden_dim, 1))
 
-        self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim+3, hidden_dim, res=res, withbn=withbn))
-        for _ in range(nmlp-2):
+        self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim + 3, hidden_dim, res=res, withbn=withbn))
+        for _ in range(nmlp - 2):
             self.listmlp_pass.append(BaseConvHeterogeneLinear(hidden_dim, hidden_dim, res=res, withbn=withbn))
         self.listmlp_pass.append(Linear(hidden_dim, 1))
 
@@ -112,7 +108,7 @@ class BaseConvHeterogeneGCNJittable(torch.nn.Module):
         super(BaseConvHeterogeneGCNJittable, self).__init__()
         self.res = res
         self.net_type = type
-        self.layer = GCNConv(input_dim, output_dim, flow='target_to_source').jittable()
+        self.layer = GCNConv(input_dim, output_dim, flow="target_to_source").jittable()
         self.withbn = withbn
         if withbn:
             self.bn = torch.nn.BatchNorm1d(output_dim)
@@ -131,7 +127,7 @@ class BaseConvHeterogeneGCN(torch.nn.Module):
         super(BaseConvHeterogeneGCN, self).__init__()
         self.res = res
         self.net_type = type
-        self.layer = GCNConv(input_dim, output_dim, flow='target_to_source')
+        self.layer = GCNConv(input_dim, output_dim, flow="target_to_source")
         self.withbn = withbn
         if withbn:
             self.bn = torch.nn.BatchNorm1d(output_dim)
@@ -148,7 +144,7 @@ class BaseConvHeterogeneGCN(torch.nn.Module):
 class BaseConvHeterogeneLinear(torch.nn.Module):
     def __init__(self, input_dim, output_dim, res=False, withbn=False):
         super(BaseConvHeterogeneLinear, self).__init__()
-        self.res =res
+        self.res = res
         self.net_type = type
         self.layer = Linear(input_dim, output_dim)
         self.withbn = withbn
@@ -177,7 +173,7 @@ class SimpleNet(torch.nn.Module):
         self.value = Linear(64, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
 
         x = self.conv_succ1(x, edge_index)
@@ -199,6 +195,7 @@ class SimpleNet(torch.nn.Module):
 
         return probs, v
 
+
 class ResNetG(torch.nn.Module):
     def __init__(self, input_dim):
         super(ResNetG, self).__init__()
@@ -212,7 +209,7 @@ class ResNetG(torch.nn.Module):
         self.value = Linear(64, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
         x_res = x.clone()
         x = self.conv_succ1(x, edge_index)
@@ -235,6 +232,7 @@ class ResNetG(torch.nn.Module):
 
         return probs, v
 
+
 class SimpleNet2(torch.nn.Module):
     def __init__(self, input_dim):
         super(SimpleNet2, self).__init__()
@@ -250,7 +248,7 @@ class SimpleNet2(torch.nn.Module):
         self.value = Linear(128, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
 
         # x = self.conv_succ2(x, edge_index)
@@ -276,6 +274,7 @@ class SimpleNet2(torch.nn.Module):
 
         return probs, v
 
+
 class SimpleNetMax(torch.nn.Module):
     def __init__(self, input_dim):
         super(SimpleNetMax, self).__init__()
@@ -289,7 +288,7 @@ class SimpleNetMax(torch.nn.Module):
         self.value = Linear(64, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
 
         x = self.conv_succ1(x, edge_index)
@@ -312,6 +311,7 @@ class SimpleNetMax(torch.nn.Module):
 
         return probs, v
 
+
 class SimpleNetW(torch.nn.Module):
     def __init__(self, input_dim):
         super(SimpleNetW, self).__init__()
@@ -325,7 +325,7 @@ class SimpleNetW(torch.nn.Module):
         self.value = Linear(64, 1)
 
     def forward(self, dico):
-        data, num_node, ready = dico['graph'], dico['node_num'], dico['ready']
+        data, num_node, ready = dico["graph"], dico["node_num"], dico["ready"]
         x, edge_index = data.x, data.edge_index
 
         x = self.conv_succ1(x, edge_index)
@@ -348,6 +348,7 @@ class SimpleNetW(torch.nn.Module):
         probs = F.softmax(probs, dim=0)
 
         return probs, v
+
 
 class SimpleNetWSage(torch.nn.Module):
     def __init__(self, input_dim):

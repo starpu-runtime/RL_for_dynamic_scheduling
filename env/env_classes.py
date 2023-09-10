@@ -1,12 +1,12 @@
-import gym
-from gym.spaces import Box, Dict
+import shutil
 import string
 
+import gym
+from gym.spaces import Dict
+
+import heft
 from env.utils import *
 from env.utils import compute_graph
-import heft
-
-import shutil
 
 
 class Trace:
@@ -53,20 +53,20 @@ class DAGEnv(gym.Env):
         self.n = n
         self.window = window
         self.env_type = env_type
-        if self.env_type == 'LU':
+        if self.env_type == "LU":
             self.max_duration_cpu = max(durations_cpu_lu)
             self.max_duration_gpu = max(durations_gpu_lu)
             self.task_data = ggen_denselu(self.n, self.noise)
-        elif self.env_type == 'QR':
+        elif self.env_type == "QR":
             self.max_duration_cpu = max(durations_cpu_qr)
             self.max_duration_gpu = max(durations_gpu_qr)
             self.task_data = ggen_QR(self.n, self.noise)
-        elif self.env_type == 'chol':
+        elif self.env_type == "chol":
             self.max_duration_cpu = max(durations_cpu)
             self.max_duration_gpu = max(durations_gpu)
             self.task_data = ggen_cholesky(self.n, self.noise)
         else:
-            raise EnvironmentError('not implemented')
+            raise EnvironmentError("not implemented")
         self.num_nodes = self.task_data.num_nodes
         self.sum_task = torch.sum(self.task_data.x, dim=0)
         self.norm_desc_features = self.task_data.longest_path_length()
@@ -85,7 +85,7 @@ class DAGEnv(gym.Env):
         # self.task_to_CP = np.zeros(len(self.task_graph.task_list))
 
         # compute heft
-        string_cluster = string.printable[:self.p]
+        string_cluster = string.printable[: self.p]
         dic_heft = {}
         for edge in np.array(self.task_data.edge_index.t()):
             dic_heft[edge[0]] = dic_heft.get(edge[0], ()) + (edge[1],)
@@ -107,14 +107,14 @@ class DAGEnv(gym.Env):
 
     def reset(self):
         # self.task_data = random_ggen_fifo(self.n, self.max_in, self.max_out, self.noise)
-        if self.env_type == 'LU':
+        if self.env_type == "LU":
             self.task_data = ggen_denselu(self.n, self.noise)
-        elif self.env_type == 'QR':
+        elif self.env_type == "QR":
             self.task_data = ggen_QR(self.n, self.noise)
-        elif self.env_type == 'chol':
+        elif self.env_type == "chol":
             self.task_data = ggen_cholesky(self.n, self.noise)
         else:
-            raise EnvironmentError('not implemented')
+            raise EnvironmentError("not implemented")
         self.time = 0
         self.num_steps = 0
         self.running = -1 * np.ones(self.p).astype(int)
@@ -127,7 +127,9 @@ class DAGEnv(gym.Env):
 
         # compute initial doable tasks
 
-        new_ready_tasks = torch.arange(0, self.num_nodes)[torch.logical_not(isin(torch.arange(0, self.num_nodes), self.task_data.edge_index[1, :]))]
+        new_ready_tasks = torch.arange(0, self.num_nodes)[
+            torch.logical_not(isin(torch.arange(0, self.num_nodes), self.task_data.edge_index[1, :]))
+        ]
         self.ready_tasks = new_ready_tasks.tolist()
 
         self.processed = {}
@@ -136,7 +138,6 @@ class DAGEnv(gym.Env):
         # if self.noise > 0:
         #     for i in range(self.task_data.num_nodes):
         #         self.task_data.task_list[i].durations[1] = self.task_data.task_list[i].duration_gpu + np.random.normal(0, self.noise)
-
 
         return self._compute_state()
 
@@ -167,9 +168,9 @@ class DAGEnv(gym.Env):
         if render_after and not speed:
             self.render()
 
-        reward = (self.heft_time - self.time)/self.heft_time if done else 0
+        reward = (self.heft_time - self.time) / self.heft_time if done else 0
 
-        info = {'episode': {'r': reward, 'length': self.num_steps, 'time': self.time}, 'bad_transition': False}
+        info = {"episode": {"r": reward, "length": self.num_steps, "time": self.time}, "bad_transition": False}
 
         if speed:
             return 0, reward, done, info
@@ -214,7 +215,6 @@ class DAGEnv(gym.Env):
         new_ready_tasks = list_succ[torch.logical_not(isin(list_succ, self.task_data.edge_index[1, :]))]
         self.ready_tasks += new_ready_tasks.tolist()
 
-
         self.current_proc = np.argmin(self.running)
 
     def _go_to_next_action(self, previous_action, enforce=True):
@@ -240,23 +240,28 @@ class DAGEnv(gym.Env):
             self.running_task2proc[action] = processor
             self.running[processor] = action
 
-            trace_file.write(f"{processor},{self.cluster.node_types[processor]},{task_types[self.task_data.task_list[action].type]},{self.time},{self.task_data.task_list[action].durations[self.cluster.node_types[processor]]}\n")
+            trace_file.write(
+                f"{processor},{self.cluster.node_types[processor]},{task_types[self.task_data.task_list[action].type]},{self.time},{self.task_data.task_list[action].durations[self.cluster.node_types[processor]]}\n"
+            )
             # print(f"{processor},{self.cluster.node_types[processor]},{task_types[self.task_data.task_list[action].type]},{self.time},{self.task_data.task_list[action].durations[self.cluster.node_types[processor]]}")
 
     def _compute_state(self):
-        visible_graph, node_num = compute_sub_graph(self.task_data,
-                                          torch.tensor(np.concatenate((self.running[self.running > -1],
-                                                                       self.ready_tasks)), dtype=torch.long),
-                                          self.window)
+        visible_graph, node_num = compute_sub_graph(
+            self.task_data,
+            torch.tensor(np.concatenate((self.running[self.running > -1], self.ready_tasks)), dtype=torch.long),
+            self.window,
+        )
         visible_graph.x, ready = self._compute_embeddings(node_num)
-        return {'graph': visible_graph, 'node_num': node_num, 'ready': ready}
+        return {"graph": visible_graph, "node_num": node_num, "ready": ready}
 
     def _remaining_time(self, running_tasks):
-        return torch.tensor([self.ready_proc[self.running_task2proc[task.item()]] for task in running_tasks]) - self.time
+        return (
+            torch.tensor([self.ready_proc[self.running_task2proc[task.item()]] for task in running_tasks]) - self.time
+        )
 
     def _isdone(self):
         # return (self.task_data.edge_index.shape[-1] == 0) and (len(self.running_task2proc) == 0)
-        return (self.compeur_task == self.num_nodes and (len(self.running_task2proc) == 0))
+        return self.compeur_task == self.num_nodes and (len(self.running_task2proc) == 0)
 
     def _compute_embeddings(self, tasks):
 
@@ -300,7 +305,7 @@ class DAGEnv(gym.Env):
         if sum(self.cluster.node_types == 1) == 0:
             min_ready_gpu = torch.FloatTensor([1]).repeat(tasks.shape[0]).unsqueeze((-1))
         else:
-            min_ready_gpu = min(self.ready_proc[self.cluster.node_types == 1] - self.time)/self.max_duration_gpu
+            min_ready_gpu = min(self.ready_proc[self.cluster.node_types == 1] - self.time) / self.max_duration_gpu
             min_ready_gpu = torch.FloatTensor([min_ready_gpu]).repeat(tasks.shape[0]).unsqueeze((-1))
         if sum(self.cluster.node_types == 0) == 0:
             min_ready_cpu = torch.FloatTensor([1]).repeat(tasks.shape[0]).unsqueeze((-1))
@@ -308,9 +313,8 @@ class DAGEnv(gym.Env):
             min_ready_cpu = min(self.ready_proc[self.cluster.node_types == 0] - self.time) / self.max_duration_cpu
             min_ready_cpu = torch.FloatTensor([min_ready_cpu]).repeat(tasks.shape[0]).unsqueeze((-1))
 
-
         # if self.current_proc > 3:
-            # print("what")
+        # print("what")
 
         # return (torch.cat((n_succ/10, n_pred/10, one_hot_type, ready, running.unsqueeze(-1).float(), remaining_time/10, cpl), dim=1),
         #         ready)
@@ -321,9 +325,24 @@ class DAGEnv(gym.Env):
         # return (torch.cat((n_succ, n_pred, one_hot_type, ready, running.unsqueeze(-1).float(), remaining_time, cpl), dim=1),
         #         ready)
 
-        return (torch.cat((n_succ, n_pred, one_hot_type, ready, running.unsqueeze(-1).float(), remaining_time,
-                           descendant_features_norm, node_type, min_ready_gpu, min_ready_cpu), dim=1),
-                ready)
+        return (
+            torch.cat(
+                (
+                    n_succ,
+                    n_pred,
+                    one_hot_type,
+                    ready,
+                    running.unsqueeze(-1).float(),
+                    remaining_time,
+                    descendant_features_norm,
+                    node_type,
+                    min_ready_gpu,
+                    min_ready_cpu,
+                ),
+                dim=1,
+            ),
+            ready,
+        )
 
         # return cpl, ready
 
@@ -333,15 +352,16 @@ class DAGEnv(gym.Env):
     # # Compute HEFT
     # def _compute_embeddings_heterogenous(self, tasks):
 
-
     def render(self):
-
         def color_task(task):
-            colors = [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]
+            colors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
             if task in self.running:
-                time_proportion =1 - (self.ready_proc[self.running_task2proc[task]] - self.time)/\
-                                  self.task_data.task_list[task].duration_cpu
-                color_time = [1., time_proportion, time_proportion]
+                time_proportion = (
+                    1
+                    - (self.ready_proc[self.running_task2proc[task]] - self.time)
+                    / self.task_data.task_list[task].duration_cpu
+                )
+                color_time = [1.0, time_proportion, time_proportion]
                 return color_time
             elif task in self.ready_tasks:
                 return colors[1]
@@ -351,16 +371,18 @@ class DAGEnv(gym.Env):
             if self.running[processor] == -1:
                 return [0, 1, 0] if self.current_proc == processor else [0.7, 0.7, 0.7]
             else:
-                time_proportion = (self.ready_proc[processor] - self.time) / \
-                                  self.task_data.task_list[self.running[processor]].duration_cpu
+                time_proportion = (self.ready_proc[processor] - self.time) / self.task_data.task_list[
+                    self.running[processor]
+                ].duration_cpu
             return [time_proportion, 0, 0]
 
-        visible_graph, node_num = compute_sub_graph(self.task_data,
-                                          torch.tensor(np.concatenate((self.running[self.running > -1],
-                                                                       self.ready_tasks)), dtype=torch.long),
-                                          self.window)
-        plt.figure(figsize=(8 , 8))
-        plt.suptitle('time: {}'.format(self.time))
+        visible_graph, node_num = compute_sub_graph(
+            self.task_data,
+            torch.tensor(np.concatenate((self.running[self.running > -1], self.ready_tasks)), dtype=torch.long),
+            self.window,
+        )
+        plt.figure(figsize=(8, 8))
+        plt.suptitle("time: {}".format(self.time))
         plt.subplot(121)
         plt.box(on=None)
         visible_graph.render(root=list(self.running[self.running > -1]))
@@ -370,7 +392,7 @@ class DAGEnv(gym.Env):
         plt.subplot(122)
         plt.box(on=None)
         graph = to_networkx(Data(visible_graph.x, visible_graph.edge_index.contiguous()))
-        pos = graphviz_layout(graph, prog='dot', root=None)
+        pos = graphviz_layout(graph, prog="dot", root=None)
         # pos = graphviz_layout(G, prog='tree')
         node_color = [color_task(task[0].item()) for task in node_num]
         # plt.figure(figsize=(8, 8))
@@ -385,7 +407,12 @@ class DAGEnv(gym.Env):
         plt.show()
 
         # Cluster
-        edges_list = [(u, v, {"cost": self.cluster.communication_cost[u, v]}) for u in range(self.p) for v in range(self.p) if u != v]
+        edges_list = [
+            (u, v, {"cost": self.cluster.communication_cost[u, v]})
+            for u in range(self.p)
+            for v in range(self.p)
+            if u != v
+        ]
         colors = [color_processor(p) for p in range(self.p)]
         G = nx.Graph()
         G.add_nodes_from(list(range(len(self.cluster.node_types))))
@@ -403,7 +430,6 @@ class DAGEnv(gym.Env):
         plt.show()
 
     def visualize_schedule(self, figsize=(80, 30), fig_file=None, flip=False):
-
         def get_data(env):
             P = env.p
             Processed = env.processed
@@ -463,26 +489,46 @@ class DAGEnv(gym.Env):
                 y1 = np.array([y, y])
                 y2 = y1 + 1
                 if col == 0:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='green', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), 'C({})'.format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="green", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "C({})".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
 
                 if col == 1:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='red', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "S{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="red", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "S{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 if col == 2:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='orange', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "T{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="orange", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "T{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 if col == 3:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='yellow', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "G{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="yellow", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "G{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 x = x + shift
                 i = i + 1
 
@@ -496,9 +542,9 @@ class DAGEnv(gym.Env):
     def export(self):
         se
 
+
 # legacy code
 class CholeskyTaskGraph(gym.Env):
-
     def __init__(self, n, node_types, window, noise=False):
         if isinstance(node_types, int):
             p = node_types
@@ -516,7 +562,9 @@ class CholeskyTaskGraph(gym.Env):
         self.p = p
         self.window = window
         self.task_graph = compute_graph(n=n, noise=noise)
-        self.task_data = TaskGraph(self.task_graph.x.clone(), self.task_graph.edge_index.clone(), self.task_graph.task_list.copy())
+        self.task_data = TaskGraph(
+            self.task_graph.x.clone(), self.task_graph.edge_index.clone(), self.task_graph.task_list.copy()
+        )
         # self.task_to_asap = {v: k for (k, v) in enumerate(self.task_data.task_list)}
         self.cluster = Cluster(node_types=node_types.astype(int), communication_cost=np.zeros((p, p)))
         self.running = -1 * np.ones(p)  # array of task number
@@ -527,13 +575,18 @@ class CholeskyTaskGraph(gym.Env):
         self.current_proc = 0
         self.is_homogene = (np.mean(self.cluster.node_types) - 1) * np.mean(self.cluster.node_types) == 0
 
-        self.critic_path_duration = sum(durations_gpu[:-2]) * (self.n - 1) + durations_gpu[0] # 158
-        self.total_work_normalized = (n * durations_gpu[0] + n * (n - 1) / 2 * (durations_gpu[1] + durations_gpu[2]) + \
-                          n * (n - 1) * (n - 2) / 6 * durations_gpu[3]) / p # 536 / p
+        self.critic_path_duration = sum(durations_gpu[:-2]) * (self.n - 1) + durations_gpu[0]  # 158
+        self.total_work_normalized = (
+            n * durations_gpu[0]
+            + n * (n - 1) / 2 * (durations_gpu[1] + durations_gpu[2])
+            + n * (n - 1) * (n - 2) / 6 * durations_gpu[3]
+        ) / p  # 536 / p
         self.task_to_CP = np.zeros(len(self.task_graph.task_list))
 
     def reset(self):
-        self.task_data = TaskGraph(self.task_graph.x.clone(), self.task_graph.edge_index.clone(), self.task_graph.task_list.copy())
+        self.task_data = TaskGraph(
+            self.task_graph.x.clone(), self.task_graph.edge_index.clone(), self.task_graph.task_list.copy()
+        )
         self.time = 0
         self.num_steps = 0
         self.running = -1 * np.ones(self.p).astype(int)
@@ -547,8 +600,9 @@ class CholeskyTaskGraph(gym.Env):
 
         if self.noise > 0:
             for i in range(self.task_data.num_nodes):
-                self.task_data.task_list[i].durations[1] = self.task_data.task_list[i].duration_gpu + np.random.normal(0, self.noise)
-
+                self.task_data.task_list[i].durations[1] = self.task_data.task_list[i].duration_gpu + np.random.normal(
+                    0, self.noise
+                )
 
         return self._compute_state()
 
@@ -579,9 +633,9 @@ class CholeskyTaskGraph(gym.Env):
             self.render()
 
         ref = max(self.critic_path_duration, self.total_work_normalized)
-        reward = - (self.time - ref) / ref if done else 0
+        reward = -(self.time - ref) / ref if done else 0
 
-        info = {'episode': {'r': reward, 'length': self.num_steps, 'time': self.time}, 'bad_transition': False}
+        info = {"episode": {"r": reward, "length": self.num_steps, "time": self.time}, "bad_transition": False}
 
         return self._compute_state(), reward, done, info
 
@@ -623,7 +677,6 @@ class CholeskyTaskGraph(gym.Env):
         new_ready_tasks = list_succ[torch.logical_not(isin(list_succ, self.task_data.edge_index[1, :]))]
         self.ready_tasks += new_ready_tasks.tolist()
 
-
         self.current_proc = np.argmin(self.running)
 
     def _go_to_next_action(self, previous_action):
@@ -650,15 +703,18 @@ class CholeskyTaskGraph(gym.Env):
             self.running[processor] = action
 
     def _compute_state(self):
-        visible_graph, node_num = compute_sub_graph(self.task_data,
-                                          torch.tensor(np.concatenate((self.running[self.running > -1],
-                                                                       self.ready_tasks)), dtype=torch.long),
-                                          self.window)
+        visible_graph, node_num = compute_sub_graph(
+            self.task_data,
+            torch.tensor(np.concatenate((self.running[self.running > -1], self.ready_tasks)), dtype=torch.long),
+            self.window,
+        )
         visible_graph.x, ready = self._compute_embeddings(node_num)
-        return {'graph': visible_graph, 'node_num': node_num, 'ready': ready}
+        return {"graph": visible_graph, "node_num": node_num, "ready": ready}
 
     def _remaining_time(self, running_tasks):
-        return torch.tensor([self.ready_proc[self.running_task2proc[task.item()]] for task in running_tasks]) - self.time
+        return (
+            torch.tensor([self.ready_proc[self.running_task2proc[task.item()]] for task in running_tasks]) - self.time
+        )
 
     def _isdone(self):
         return (self.task_data.edge_index.shape[-1] == 0) and (len(self.running_task2proc) == 0)
@@ -691,7 +747,10 @@ class CholeskyTaskGraph(gym.Env):
         cpl = torch.zeros(tasks.shape[0])
         for i, task in enumerate(tasks):
             if self.task_to_CP[task] == 0:
-                cpl[i] = CPAndWorkBelow(self.task_graph.task_list[task], self.n, durations_gpu)[0] / self.critic_path_duration
+                cpl[i] = (
+                    CPAndWorkBelow(self.task_graph.task_list[task], self.n, durations_gpu)[0]
+                    / self.critic_path_duration
+                )
                 self.task_to_CP[task] = cpl[i]
             else:
                 cpl[i] = self.task_to_CP[task]
@@ -704,8 +763,21 @@ class CholeskyTaskGraph(gym.Env):
         # if self.current_proc > 3:
         #     print("what")
 
-        return (torch.cat((n_succ/10, n_pred/10, one_hot_type, ready, running.unsqueeze(-1).float(), remaining_time/10, cpl), dim=1),
-                ready)
+        return (
+            torch.cat(
+                (
+                    n_succ / 10,
+                    n_pred / 10,
+                    one_hot_type,
+                    ready,
+                    running.unsqueeze(-1).float(),
+                    remaining_time / 10,
+                    cpl,
+                ),
+                dim=1,
+            ),
+            ready,
+        )
 
         # return (torch.cat((n_succ/10, n_pred/10, one_hot_type, ready, running.unsqueeze(-1).float(), remaining_time/10), dim=1),
         #         ready)
@@ -722,13 +794,15 @@ class CholeskyTaskGraph(gym.Env):
         #         ready)
 
     def render(self):
-
         def color_task(task):
-            colors = [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]]
+            colors = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
             if task in self.running:
-                time_proportion =1 - (self.ready_proc[self.running_task2proc[task]] - self.time)/\
-                                  self.task_data.task_list[task].duration_cpu
-                color_time = [1., time_proportion, time_proportion]
+                time_proportion = (
+                    1
+                    - (self.ready_proc[self.running_task2proc[task]] - self.time)
+                    / self.task_data.task_list[task].duration_cpu
+                )
+                color_time = [1.0, time_proportion, time_proportion]
                 return color_time
             elif task in self.ready_tasks:
                 return colors[1]
@@ -738,16 +812,18 @@ class CholeskyTaskGraph(gym.Env):
             if self.running[processor] == -1:
                 return [0, 1, 0] if self.current_proc == processor else [0.7, 0.7, 0.7]
             else:
-                time_proportion = (self.ready_proc[processor] - self.time) / \
-                                  self.task_data.task_list[self.running[processor]].duration_cpu
+                time_proportion = (self.ready_proc[processor] - self.time) / self.task_data.task_list[
+                    self.running[processor]
+                ].duration_cpu
             return [time_proportion, 0, 0]
 
-        visible_graph, node_num = compute_sub_graph(self.task_data,
-                                          torch.tensor(np.concatenate((self.running[self.running > -1],
-                                                                       self.ready_tasks)), dtype=torch.long),
-                                          self.window)
-        plt.figure(figsize=(8 , 8))
-        plt.suptitle('time: {}'.format(self.time))
+        visible_graph, node_num = compute_sub_graph(
+            self.task_data,
+            torch.tensor(np.concatenate((self.running[self.running > -1], self.ready_tasks)), dtype=torch.long),
+            self.window,
+        )
+        plt.figure(figsize=(8, 8))
+        plt.suptitle("time: {}".format(self.time))
         plt.subplot(121)
         plt.box(on=None)
         visible_graph.render(root=list(self.running[self.running > -1]))
@@ -757,7 +833,7 @@ class CholeskyTaskGraph(gym.Env):
         plt.subplot(122)
         plt.box(on=None)
         graph = to_networkx(Data(visible_graph.x, visible_graph.edge_index.contiguous()))
-        pos = graphviz_layout(graph, prog='dot', root=None)
+        pos = graphviz_layout(graph, prog="dot", root=None)
         # pos = graphviz_layout(G, prog='tree')
         node_color = [color_task(task[0].item()) for task in node_num]
         # plt.figure(figsize=(8, 8))
@@ -772,7 +848,12 @@ class CholeskyTaskGraph(gym.Env):
         plt.show()
 
         # Cluster
-        edges_list = [(u, v, {"cost": self.cluster.communication_cost[u, v]}) for u in range(self.p) for v in range(self.p) if u != v]
+        edges_list = [
+            (u, v, {"cost": self.cluster.communication_cost[u, v]})
+            for u in range(self.p)
+            for v in range(self.p)
+            if u != v
+        ]
         colors = [color_processor(p) for p in range(self.p)]
         G = nx.Graph()
         G.add_nodes_from(list(range(len(self.cluster.node_types))))
@@ -790,7 +871,6 @@ class CholeskyTaskGraph(gym.Env):
         plt.show()
 
     def visualize_schedule(self, figsize=(80, 30), fig_file=None, flip=False):
-
         def get_data(env):
             P = env.p
             Processed = env.processed
@@ -850,26 +930,46 @@ class CholeskyTaskGraph(gym.Env):
                 y1 = np.array([y, y])
                 y2 = y1 + 1
                 if col == 0:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='green', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), 'C({})'.format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="green", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "C({})".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
 
                 if col == 1:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='red', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "S{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="red", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "S{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 if col == 2:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='orange', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "T{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="orange", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "T{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 if col == 3:
-                    plt.fill_between(x1, y1, y2=y2, facecolor='yellow', edgecolor='Black')
-                    plt.text(avg(x1[0], x1[1]), avg(y1[0], y2[0]), "G{}".format(indices),
-                             horizontalalignment='center',
-                             verticalalignment='center', fontsize=30)
+                    plt.fill_between(x1, y1, y2=y2, facecolor="yellow", edgecolor="Black")
+                    plt.text(
+                        avg(x1[0], x1[1]),
+                        avg(y1[0], y2[0]),
+                        "G{}".format(indices),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        fontsize=30,
+                    )
                 x = x + shift
                 i = i + 1
 
@@ -880,13 +980,11 @@ class CholeskyTaskGraph(gym.Env):
             plt.savefig(fig_file)
         return
 
+
 if __name__ == "__main__":
-    import torch
-    from env import CholeskyTaskGraph
     import networkx as nx
     from torch_geometric.utils.convert import to_networkx
 
-    import pydot
     import matplotlib.pyplot as plt
     from networkx.drawing.nx_pydot import graphviz_layout
     import numpy as np
@@ -902,44 +1000,44 @@ if __name__ == "__main__":
     # print('ok')
     # env.task_data.add_features_descendant()
 #
-    # env = CholeskyTaskGraph(8, np.array([1,1,1,1]), 1, noise=2)
-    # print(len(env.task_data.x))
-    # obs = env.reset()
-    # obs = env.reset()
+# env = CholeskyTaskGraph(8, np.array([1,1,1,1]), 1, noise=2)
+# print(len(env.task_data.x))
+# obs = env.reset()
+# obs = env.reset()
 #     done = False
 #     env.render()
 #     env.step(0, render_before=True, render_after=True)
 #     env.render()
 #     env.step(1, render_before=True, render_after=True)
 #     env.render()
-    # env.step(2, render_before=True, render_after=True)
-    # # env.render()
-    # env.step(-1, render_before=True, render_after=True)
-    # # env.render()
-    # env.step(-1, render_before=True, render_after=True)
-    # # env.render()
+# env.step(2, render_before=True, render_after=True)
+# # env.render()
+# env.step(-1, render_before=True, render_after=True)
+# # env.render()
+# env.step(-1, render_before=True, render_after=True)
+# # env.render()
 #     while not done:
 #         action = env.ready_tasks[0]
 #         observation, reward, done, info = env.step(action)
 #     print(reward)
 #     print(env.time)
 
-    # model = torch.load('/home/nathan/PycharmProjects/HPC/runs/Apr13_14-24-24_nathan-Latitude-7490/model.pth')
-    # env = CholeskyTaskGraph(8, 4, 2)
-    # print(len(env.task_data.x))
-    # observation = env.reset()
-    # done = False
-    #
-    # while not done:
-    #     policy, value = model(observation)
-    #     # action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
-    #     action_raw = policy.argmax().detach().cpu().numpy()
-    #     ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
-    #     # action = -1 if action_raw == policy.shape[-1] - 1 else observation['node_num'][ready_nodes][action_raw].detach().numpy()[0][0]
-    #     action = -1 if action_raw == policy.shape[-1] - 1 else observation['node_num'][ready_nodes][action_raw].detach().numpy()[0]
-    #     observation, reward, done, info = env.step(action)
-    # print(reward)
-    # print(env.time)
+# model = torch.load('/home/nathan/PycharmProjects/HPC/runs/Apr13_14-24-24_nathan-Latitude-7490/model.pth')
+# env = CholeskyTaskGraph(8, 4, 2)
+# print(len(env.task_data.x))
+# observation = env.reset()
+# done = False
+#
+# while not done:
+#     policy, value = model(observation)
+#     # action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
+#     action_raw = policy.argmax().detach().cpu().numpy()
+#     ready_nodes = observation['ready'].squeeze(1).to(torch.bool)
+#     # action = -1 if action_raw == policy.shape[-1] - 1 else observation['node_num'][ready_nodes][action_raw].detach().numpy()[0][0]
+#     action = -1 if action_raw == policy.shape[-1] - 1 else observation['node_num'][ready_nodes][action_raw].detach().numpy()[0]
+#     observation, reward, done, info = env.step(action)
+# print(reward)
+# print(env.time)
 
 # learn not to pass : -0.3670886075949367, 216.0
 

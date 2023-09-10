@@ -4,8 +4,8 @@ import torch
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--model_path', type=str, required=True, help='path to load model')
-parser.add_argument('--output_path', type=str, required=True, help='path to save model')
+parser.add_argument("--model_path", type=str, required=True, help="path to load model")
+parser.add_argument("--output_path", type=str, required=True, help="path to save model")
 
 args = parser.parse_args()
 

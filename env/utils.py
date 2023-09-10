@@ -1,16 +1,16 @@
-from torch_geometric.data import Data
-
-import torch
-import networkx as nx
-from torch_geometric.utils.convert import to_networkx
+import os
+import pickle as pkl
+import re
 
 # import pydot
 import matplotlib.pyplot as plt
-from networkx.drawing.nx_pydot import graphviz_layout
+import networkx as nx
 import numpy as np
-import re
-import os
-import pickle as pkl
+import torch
+from networkx.drawing.nx_pydot import graphviz_layout
+from torch_geometric.data import Data
+from torch_geometric.utils.convert import to_networkx
+
 # task type 0: POTRF 1:SYRK 2:TRSM 3: GEMMS
 
 task_types = ["POTRF", "SYRK", "TRSM", "GEMM"]
@@ -34,36 +34,53 @@ durations_gpu_qr = [3, 3, 1, 1]
 
 simple_durations = [1, 3, 3, 6, 0]
 
-colors = {0: [0, 0, 0], 1: [230, 190, 255], 2: [170, 255, 195], 3: [255, 250, 200],
-          4: [255, 216, 177], 5: [250, 190, 190], 6: [240, 50, 230], 7: [145, 30, 180], 8: [67, 99, 216],
-          9: [66, 212, 244], 10: [60, 180, 75], 11: [191, 239, 69], 12: [255, 255, 25], 13: [245, 130, 49],
-          14: [230, 25, 75], 15: [128, 0, 0], 16: [154, 99, 36], 17: [128, 128, 0], 18: [70, 153, 144],
-          19: [0, 0, 117]}
+colors = {
+    0: [0, 0, 0],
+    1: [230, 190, 255],
+    2: [170, 255, 195],
+    3: [255, 250, 200],
+    4: [255, 216, 177],
+    5: [250, 190, 190],
+    6: [240, 50, 230],
+    7: [145, 30, 180],
+    8: [67, 99, 216],
+    9: [66, 212, 244],
+    10: [60, 180, 75],
+    11: [191, 239, 69],
+    12: [255, 255, 25],
+    13: [245, 130, 49],
+    14: [230, 25, 75],
+    15: [128, 0, 0],
+    16: [154, 99, 36],
+    17: [128, 128, 0],
+    18: [70, 153, 144],
+    19: [0, 0, 117],
+}
 
-color_normalized = {i: list(np.array(colors[i])/255) for i in colors}
+color_normalized = {i: list(np.array(colors[i]) / 255) for i in colors}
 
-class Task():
 
-    def __init__(self, barcode, noise=0, task_type='chol'):
+class Task:
+    def __init__(self, barcode, noise=0, task_type="chol"):
         """
         task_type 0: POTRF 1:SYRK 2:TRSM 3: GEMMS
         0: LU 1: BMOD 2: BDIV 3: FW
         """
 
         self.type = barcode[0]
-        if task_type=='chol':
+        if task_type == "chol":
             self.duration_cpu = durations_cpu[self.type]
             self.duration_gpu = durations_gpu[self.type]
 
-        elif task_type == 'LU':
+        elif task_type == "LU":
             self.duration_cpu = durations_cpu_lu[self.type]
             self.duration_gpu = durations_gpu_lu[self.type]
 
-        elif task_type == 'QR':
+        elif task_type == "QR":
             self.duration_cpu = durations_cpu_qr[self.type]
             self.duration_gpu = durations_gpu_qr[self.type]
         else:
-            raise NotImplementedError('task type unknown')
+            raise NotImplementedError("task type unknown")
         self.barcode = barcode
         self.durations = [self.duration_cpu, self.duration_gpu]
         # if noise and self.type == 3:
@@ -74,7 +91,6 @@ class Task():
 
 
 class TaskGraph(Data):
-
     def __init__(self, x, edge_index, task_list):
         Data.__init__(self, x, edge_index.to(torch.long))
         self.task_list = np.array(task_list)
@@ -85,7 +101,7 @@ class TaskGraph(Data):
         # graph = self.data
         task_list = [t.barcode for t in self.task_list]
         graph = to_networkx(Data(self.x, self.edge_index.contiguous()))
-        pos = graphviz_layout(graph, prog='dot', root=root)
+        pos = graphviz_layout(graph, prog="dot", root=root)
         # pos = graphviz_layout(G, prog='twopi')
         node_color = [color_normalized[task[0]] for task in task_list]
         # plt.figure(figsize=(8, 8))
@@ -95,8 +111,9 @@ class TaskGraph(Data):
     def remove_edges(self, node_list):
         # mask_node = torch.logical_not(isin(self.x, node_list))
         # self.x = self.x[mask_node]
-        mask_edge = isin(self.edge_index[0, :], torch.tensor(node_list)) | \
-                    isin(self.edge_index[1, :], torch.tensor(node_list))
+        mask_edge = isin(self.edge_index[0, :], torch.tensor(node_list)) | isin(
+            self.edge_index[1, :], torch.tensor(node_list)
+        )
         self.edge_index = self.edge_index[:, torch.logical_not(mask_edge)]
 
     def add_features_descendant(self):
@@ -146,15 +163,15 @@ class TaskGraph(Data):
         for i in range(self.n):
             longest_path_lengths[i] = find_longest_path_lengths(graph, i, last_task_node, memo)
 
-        return torch.tensor(longest_path_lengths/longest_path_lengths[0], dtype=torch.float)
+        return torch.tensor(longest_path_lengths / longest_path_lengths[0], dtype=torch.float)
 
 
-class Node():
+class Node:
     def __init__(self, type):
         self.type = type
 
 
-class Cluster():
+class Cluster:
     def __init__(self, node_types, communication_cost):
         """
         :param node_types:
@@ -163,7 +180,6 @@ class Cluster():
         self.node_types = node_types
         self.node_state = np.zeros(len(node_types))
         self.communication_cost = communication_cost
-
 
     def render(self):
         edges_list = [(u, v, {"cost": w}) for (u, v, w) in enumerate(self.communication_cost)]
@@ -259,6 +275,7 @@ def CPAndWorkBelow(x, n, durations):
 
     return (CPl, TotalWork)
 
+
 def _add_task(dic_already_seen, list_to_process, task):
     if task.barcode in dic_already_seen:
         pass
@@ -293,19 +310,22 @@ def compute_graph(n, noise=False):
     # embeddings
     embeddings = [k for k in TaskList]
 
-    data = Data(x=torch.tensor(embeddings, dtype=torch.float),
-                edge_index=torch.tensor(EdgeList).t().contiguous())
+    data = Data(x=torch.tensor(embeddings, dtype=torch.float), edge_index=torch.tensor(EdgeList).t().contiguous())
 
     task_array = []
     for (k, v) in TaskList.items():
         task_array.append(Task(k, noise=noise))
-    return TaskGraph(x=torch.tensor(embeddings, dtype=torch.float),
-                edge_index=torch.tensor(EdgeList).t().contiguous(), task_list=task_array)
+    return TaskGraph(
+        x=torch.tensor(embeddings, dtype=torch.float),
+        edge_index=torch.tensor(EdgeList).t().contiguous(),
+        task_list=task_array,
+    )
     # return data, task_array
 
 
 def isin(ar1, ar2):
     return (ar1[..., None] == ar2).any(-1)
+
 
 def remove_nodes(edge_index, mask, num_nodes):
     r"""Removes the isolated nodes from the graph given by :attr:`edge_index`
@@ -327,6 +347,7 @@ def remove_nodes(edge_index, mask, num_nodes):
     edge_index = assoc[edge_index]
 
     return edge_index
+
 
 def compute_sub_graph(data, root_nodes, window):
     """
@@ -369,28 +390,29 @@ def compute_sub_graph(data, root_nodes, window):
 
 
 def taskGraph2SLC(taskGraph, save_path):
-    with open(save_path,"w") as file:
+    with open(save_path, "w") as file:
         file.write(str(len(taskGraph.task_list)))
-        file.write('\n')
+        file.write("\n")
         for node, task in enumerate(taskGraph.task_list):
             line1 = str(node + 1) + " " + str(simple_durations[task.type]) + " 1"
             file.write(line1)
-            file.write('\n')
+            file.write("\n")
 
             line2 = ""
             for n in taskGraph.edge_index[1][taskGraph.edge_index[0] == node]:
                 line2 += str(n.item() + 1) + " 0 "
             line2 += "-1"
             file.write(line2)
-            file.write('\n')
+            file.write("\n")
         # file.write("-1")
+
 
 def random_ggen_fifo_edges(n_vertex, max_in, max_out):
     stream = os.popen("ggen generate-graph fifo {:d} {:d} {:d}".format(n_vertex, max_in, max_out))
     graph = stream.read()
-    out_graph = graph.split('dag')[1].replace('\n', '').replace('\t', '').replace('{', '[[').replace('}', ']]')
-    out_graph = out_graph.replace(' -> ', ', ')
-    out_graph = out_graph.replace(';', '], [')
+    out_graph = graph.split("dag")[1].replace("\n", "").replace("\t", "").replace("{", "[[").replace("}", "]]")
+    out_graph = out_graph.replace(" -> ", ", ")
+    out_graph = out_graph.replace(";", "], [")
     out_graph = eval(out_graph)
     out_graph.pop()
     edge_index = np.transpose(np.array(out_graph))
@@ -406,30 +428,30 @@ def random_ggen_fifo(n_vertex, max_in, max_out, noise=0):
     task_list = []
     for t in tasks:
         task_list.append(Task((t), noise=noise))
-    return TaskGraph(x=torch.tensor(x, dtype=torch.float),
-                edge_index=torch.tensor(edges), task_list=task_list)
+    return TaskGraph(x=torch.tensor(x, dtype=torch.float), edge_index=torch.tensor(edges), task_list=task_list)
+
 
 def ggen_cholesky(n_vertex, noise=0):
     # P = POTRF
     # S = SYRK
     # T = TRSM
     # G = GEMM
-    dic_task_ch = {'p': 0, 's': 1, 't': 2, 'g': 3}
+    dic_task_ch = {"p": 0, "s": 1, "t": 2, "g": 3}
 
     def parcours_and_purge(s):
-        reg = re.compile('\[kernel=[\D]*\]')
+        reg = re.compile("\[kernel=[\D]*\]")
         x = reg.findall(s)
         return np.array([dic_task_ch[subx[8:9]] for subx in x])
 
     def parcours_and_purge_edges(s):
-        reg = re.compile('\\t[\d]+ -> [\d]+\\t')
+        reg = re.compile("\\t[\d]+ -> [\d]+\\t")
         x = reg.findall(s)
-        out = np.array([[int(subx.split(' -> ')[0][1:]), int(subx.split(' -> ')[1][:-1])] for subx in x])
+        out = np.array([[int(subx.split(" -> ")[0][1:]), int(subx.split(" -> ")[1][:-1])] for subx in x])
         return out.transpose()
 
-    file_path = 'graphs/cholesky_{}.txt'.format(n_vertex)
+    file_path = "graphs/cholesky_{}.txt".format(n_vertex)
     if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             graph = f.read()
     else:
         stream = os.popen("ggen dataflow-graph cholesky {:d}".format(n_vertex))
@@ -442,27 +464,27 @@ def ggen_cholesky(n_vertex, noise=0):
     x[np.arange(n), tasks.astype(int)] = 1
     task_list = []
     for i, t in enumerate(tasks):
-        task_list.append(Task((t, i), noise=noise, task_type='chol'))
-    return TaskGraph(x=torch.tensor(x, dtype=torch.float),
-                edge_index=torch.tensor(edges), task_list=task_list)
+        task_list.append(Task((t, i), noise=noise, task_type="chol"))
+    return TaskGraph(x=torch.tensor(x, dtype=torch.float), edge_index=torch.tensor(edges), task_list=task_list)
+
 
 def ggen_denselu(n_vertex, noise=0):
-    dic_task_lu = {'lu': 0, 'bm': 1, 'bd': 2, 'fw': 3}
+    dic_task_lu = {"lu": 0, "bm": 1, "bd": 2, "fw": 3}
 
     def parcours_and_purge(s):
-        reg = re.compile('\[kernel=[\D]*\]')
+        reg = re.compile("\[kernel=[\D]*\]")
         x = reg.findall(s)
         return np.array([dic_task_lu[subx[8:10]] for subx in x])
 
     def parcours_and_purge_edges(s):
-        reg = re.compile('\\t[\d]+ -> [\d]+\\t')
+        reg = re.compile("\\t[\d]+ -> [\d]+\\t")
         x = reg.findall(s)
-        out = np.array([[int(subx.split(' -> ')[0][1:]), int(subx.split(' -> ')[1][:-1])] for subx in x])
+        out = np.array([[int(subx.split(" -> ")[0][1:]), int(subx.split(" -> ")[1][:-1])] for subx in x])
         return out.transpose()
 
-    file_path = 'graphs/denselu_{}.txt'.format(n_vertex)
+    file_path = "graphs/denselu_{}.txt".format(n_vertex)
     if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             graph = f.read()
     else:
         stream = os.popen("ggen dataflow-graph denselu {:d}".format(n_vertex))
@@ -474,19 +496,18 @@ def ggen_denselu(n_vertex, noise=0):
     x[np.arange(n), tasks] = 1
     task_list = []
     for i, t in enumerate(tasks):
-        task_list.append(Task((t, i), noise=noise, task_type='LU'))
-    return TaskGraph(x=torch.tensor(x, dtype=torch.float),
-                edge_index=torch.tensor(edges), task_list=task_list)
+        task_list.append(Task((t, i), noise=noise, task_type="LU"))
+    return TaskGraph(x=torch.tensor(x, dtype=torch.float), edge_index=torch.tensor(edges), task_list=task_list)
 
 
 def ggen_QR(n, noise=0):
     # file_path = '/home/ngrinsztajn/HPC/graphs/QR_{}.pkl'.format(n)
-    file_path = 'graphs/QR_{}.pkl'.format(n)
+    file_path = "graphs/QR_{}.pkl".format(n)
     if os.path.exists(file_path):
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             output = pkl.load(f)
             return output
-        print('file loaded')
+        print("file loaded")
 
     numtask = 0
 
@@ -570,9 +591,9 @@ def ggen_QR(n, noise=0):
     x[np.arange(n), tasks] = 1
     task_list = []
     for i, t in enumerate(tasks):
-        task_list.append(Task((t, i), noise=noise, task_type='QR'))
-    return TaskGraph(x=torch.tensor(x, dtype=torch.float),
-                edge_index=torch.tensor(edges), task_list=task_list)
+        task_list.append(Task((t, i), noise=noise, task_type="QR"))
+    return TaskGraph(x=torch.tensor(x, dtype=torch.float), edge_index=torch.tensor(edges), task_list=task_list)
+
 
 # def random_denselu(n_vertex, noise=0):
 #     def parcours_and_purge(s):

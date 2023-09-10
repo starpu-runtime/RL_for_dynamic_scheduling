@@ -1,14 +1,13 @@
 import argparse
 
-from a2c import *
 from env.utils import *
 
 # torch.nn.Module.dump_patches = True
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--model_path', type=str, required=True, help='path to load model')
-parser.add_argument('--output_path', type=str, required=True, help='path to save model')
+parser.add_argument("--model_path", type=str, required=True, help="path to load model")
+parser.add_argument("--output_path", type=str, required=True, help="path to save model")
 
 args = parser.parse_args()
 config_enhanced = vars(args)
@@ -24,8 +23,9 @@ running = -1 * np.ones(p)  # array of task number
 ready_tasks = [0]
 window = 0
 
-visible_graph, node_num = compute_sub_graph(task_data, torch.tensor(
-    np.concatenate((running[running > -1], ready_tasks)), dtype=torch.long), window)
+visible_graph, node_num = compute_sub_graph(
+    task_data, torch.tensor(np.concatenate((running[running > -1], ready_tasks)), dtype=torch.long), window
+)
 ready = isin(node_num, torch.tensor(ready_tasks)).float()
 
 n_succ = torch.sum((node_num == task_data.edge_index[0]).float(), dim=1).unsqueeze(-1)
@@ -53,13 +53,22 @@ min_ready_cpu = torch.FloatTensor([1]).repeat(node_num.shape[0]).unsqueeze((-1))
 running_1 = isin(node_num, torch.tensor(running[running > -1])).squeeze(-1)
 running_1 = running_1.unsqueeze(-1).float()
 
-visible_graph.x = torch.cat((n_succ, n_pred, one_hot_type, ready, running_1, remaining_time,
-                             descendant_features_norm, node_type, min_ready_gpu, min_ready_cpu), dim=1)
-data = {
-    "graph": visible_graph,
-    "node_num": node_num,
-    "ready": ready
-}
+visible_graph.x = torch.cat(
+    (
+        n_succ,
+        n_pred,
+        one_hot_type,
+        ready,
+        running_1,
+        remaining_time,
+        descendant_features_norm,
+        node_type,
+        min_ready_gpu,
+        min_ready_cpu,
+    ),
+    dim=1,
+)
+data = {"graph": visible_graph, "node_num": node_num, "ready": ready}
 
 out = model(data)
 

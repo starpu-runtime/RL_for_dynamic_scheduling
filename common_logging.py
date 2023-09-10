@@ -5,14 +5,14 @@ class CustomFormatter(logging.Formatter):
     """Custom formatter to include method name and add color"""
 
     COLORS = {
-        'WARNING': '\033[93m',
-        'INFO': '\033[94m',
-        'DEBUG': '\033[92m',
-        'CRITICAL': '\033[91m',
-        'ERROR': '\033[91m'
+        "WARNING": "\033[93m",
+        "INFO": "\033[94m",
+        "DEBUG": "\033[92m",
+        "CRITICAL": "\033[91m",
+        "ERROR": "\033[91m",
     }
 
-    RESET = '\033[0m'
+    RESET = "\033[0m"
 
     def format(self, record):
         log_format = f"[training_script][{record.funcName}] {record.msg}"

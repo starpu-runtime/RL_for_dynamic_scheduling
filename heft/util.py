@@ -1,8 +1,8 @@
-
 import itertools as it
 
+
 def reverse_dict(d):
-    """ Reverses direction of dependence dict
+    """Reverses direction of dependence dict
 
     >>> d = {'a': (1, 2), 'b': (2, 3), 'c':()}
     >>> reverse_dict(d)
@@ -11,8 +11,9 @@ def reverse_dict(d):
     result = {}
     for key in d:
         for val in d[key]:
-            result[val] = result.get(val, tuple()) + (key, )
+            result[val] = result.get(val, tuple()) + (key,)
     return result
+
 
 def find_job_event(job_name, orders_dict):
     for event in it.chain.from_iterable(orders_dict.values()):
