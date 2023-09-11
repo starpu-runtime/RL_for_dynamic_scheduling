@@ -108,7 +108,8 @@ class StarPUEnv(gym.Env):
             edge_index = torch.tensor(data["edge_index_vector"]).reshape(2, len(data["edge_index_vector"]) // 2)
 
         else:
-            self.reward = read_queue(queue)
+            gflops, max_gflops = read_queue(queue)
+            self.reward = - (max_gflops - gflops) / 500
             self.tasks_left = 0
             self.ready_tasks = torch.tensor([]).reshape(0, 1)
 
