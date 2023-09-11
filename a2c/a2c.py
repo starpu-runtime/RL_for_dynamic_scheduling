@@ -167,6 +167,7 @@ class A2C:
                     training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
                     training_logger.warn(f"Ready: {observation['ready']}")
                     training_logger.warn(f"Policy: {policy}")
+                    exit()
 
                 probs[n_step] = policy[action_raw]
                 ready_nodes = observation["ready"].squeeze(1).to(torch.bool)
