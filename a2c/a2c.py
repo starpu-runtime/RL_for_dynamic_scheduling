@@ -497,9 +497,7 @@ class A2C:
         return loss_value.data.item(), loss_actor.data.item(), loss_entropy.data.item()
 
     def evaluate(self, render=False):
-        env = self.monitor_env if render else deepcopy(self.env)
-
-        observation = env.reset()
+        observation = self.env.reset()
         done = False
 
         while not done:
@@ -528,10 +526,10 @@ class A2C:
             print("Action: ", action)
 
             try:
-                observation, reward, done, info = env.step(action)
+                observation, reward, done, info = self.env.step(action)
             except KeyError:
                 print(chelou)
 
         print("Finally done")
 
-        return env.time
+        return self.env.reward
