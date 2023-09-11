@@ -123,9 +123,9 @@ class A2C:
         batch_size = self.config["trajectory_length"]
         num_steps = self.config["num_env_steps"]
 
-        actions = np.zeros((num_steps,), dtype=np.int)
-        dones = np.zeros((num_steps,), dtype=np.bool)
-        rewards, values = np.empty((2, num_steps), dtype=np.float)
+        actions = np.zeros((num_steps,), dtype=int)
+        dones = np.zeros((num_steps,), dtype=bool)
+        rewards, values = np.empty((2, num_steps), dtype=float)
         observations = []
         observation = self.env.reset()
         observation["graph"] = observation["graph"].to(device)
@@ -299,9 +299,9 @@ class A2C:
 
         batch_size = self.config["trajectory_length"]
 
-        actions = np.empty((batch_size,), dtype=np.int)
-        dones = np.empty((batch_size,), dtype=np.bool)
-        rewards, values = np.empty((2, batch_size), dtype=np.float)
+        actions = np.empty((batch_size,), dtype=int)
+        dones = np.empty((batch_size,), dtype=bool)
+        rewards, values = np.empty((2, batch_size), dtype=float)
         observations = []
         observation = self.env.reset()
         observation["graph"] = observation["graph"].to(device)
