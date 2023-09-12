@@ -48,6 +48,9 @@ parser.add_argument("--seed", type=int, default=42, help="Random seed.")
 parser.add_argument("--agent", type=str, default="A2C", help="A2C")
 parser.add_argument("--result_name", type=str, default="results.csv", help="filename where results are stored")
 
+parser.add_argument("--convergence_threshold", type=float, default=50, help="")
+parser.add_argument("--required_buffer_elements", type=int, default=10, help="")
+
 # model settings
 parser.add_argument("--input_dim", type=int, default=13, help="input dim")
 parser.add_argument("--hidden_dim", type=int, default=128, help="hidden dim")
@@ -68,7 +71,7 @@ parser.add_argument("--seed_env", type=int, default=42, help="Random seed env ")
 
 
 class StarPUEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, required_buffer_elements, convergence_threshold):
         self.num_steps = 0
         self.time = 0
         self.task_count = 0
@@ -77,9 +80,9 @@ class StarPUEnv(gym.Env):
         self.ready_tasks = None
         self.number_tasks = None
         self.reward = 0
-        self.required_buffer_elements = 5
+        self.required_buffer_elements = required_buffer_elements
         self.execution_performance_buffer = deque(maxlen=self.required_buffer_elements)
-        self.convergence_threshold = 1.0
+        self.convergence_threshold = convergence_threshold
         self.performance = 0
         self.converged = False
         self.training_ended = False
@@ -259,7 +262,7 @@ def train(argv=None):
 
     training_logger.info(f"Current config_enhanced is:\n{pformat(config_enhanced)}")
 
-    env = StarPUEnv()
+    env = StarPUEnv(args.required_buffer_elements, args.convergence_threshold)
 
     model = ModelHeterogene(
         input_dim=args.input_dim,
