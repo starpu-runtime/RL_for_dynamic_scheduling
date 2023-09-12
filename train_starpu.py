@@ -125,8 +125,8 @@ class StarPUEnv(gym.Env):
             append_queue(convergence_status_queue, True if self.training_ended else False)
             training_logger.info(f"Training ended: {self.training_ended}")
 
-        if reset and not done:
-            # If get_reward was called by self.reset() and the execution wasn't done (signaled by the scheduler), then
+        if reset or not done:
+            # If get_reward was called by self.reset() or the execution wasn't done (signaled by the scheduler), then
             # the reward is set to 0
             self.reward = 0
         else:
