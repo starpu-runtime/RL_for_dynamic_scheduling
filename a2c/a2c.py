@@ -123,12 +123,10 @@ class A2C:
         batch_size = self.config["trajectory_length"]
         num_steps = self.config["num_env_steps"]
 
-        actions = np.zeros((num_steps,), dtype=int)
-        dones = np.zeros((num_steps,), dtype=bool)
-        rewards, values = np.empty((2, num_steps), dtype=float)
+        actions = np.zeros((batch_size,), dtype=int)
+        dones = np.zeros((batch_size,), dtype=bool)
+        rewards, values = np.empty((2, batch_size), dtype=float)
         observations = []
-        observation = self.env.reset()
-        observation["graph"] = observation["graph"].to(device)
         rewards_test = []
         best_reward_mean = -1000
 
@@ -137,88 +135,87 @@ class A2C:
         best_reward = 100000
 
         while not self.env.converged:
+            observation = self.env.reset(init=True)
+            observation["graph"] = observation["graph"].to(device)
+
             training_logger.info(f"Step: {n_step}")
 
-            # Lets collect one batch
+            for n_episode in range(self.config["num_episodes"]):
+                # Let's collect one batch
 
-            probs = torch.zeros(num_steps, dtype=torch.float, device=device)
-            vals = torch.zeros(num_steps, dtype=torch.float, device=device)
-            probs_entropy = torch.zeros(num_steps, dtype=torch.float, device=device)
-            done = False
+                probs = torch.zeros(batch_size, dtype=torch.float, device=device)
+                vals = torch.zeros(batch_size, dtype=torch.float, device=device)
+                probs_entropy = torch.zeros(batch_size, dtype=torch.float, device=device)
 
-            while not self.env.converged and not done and n_step < self.config["num_env_steps"]:
-                observations.append(observation["graph"])
-                policy, value = self.network(
-                    observation["graph"].x, observation["graph"].edge_index, observation["ready"]
+                for i in range(batch_size):
+                    print(f"Episode {n_episode}, batch: {i}/{batch_size}")
+
+                    observations.append(observation["graph"])
+                    policy, value = self.network(
+                        observation["graph"].x, observation["graph"].edge_index, observation["ready"]
+                    )
+
+                    values[i] = value.detach().cpu().numpy()
+                    vals[i] = value
+                    probs_entropy[i] = -(policy * policy.log()).sum(-1)
+                    try:
+                        action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
+                    except:
+                        training_logger.warn("Something unexpected has happened during inference")
+                        training_logger.warn(f"Graph X: {observation['graph'].x}")
+                        training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
+                        training_logger.warn(f"Ready: {observation['ready']}")
+                        training_logger.warn(f"Policy: {policy}")
+                        exit()
+
+                    probs[i] = policy[action_raw]
+                    ready_nodes = observation["ready"].squeeze(1).to(torch.bool)
+
+                    actions[i] = (
+                        -1 if action_raw == policy.shape[-1] - 1 else observation["node_num"][ready_nodes][action_raw]
+                    )
+
+                    observation, rewards[i], dones[i], info = self.env.step(actions[i])
+                    observation["graph"] = observation["graph"].to(device)
+
+                    training_logger.info(f"Step increase: {n_step}")
+                    n_step += 1
+
+                    if dones[i]:
+                        training_logger.info(dones)
+                        training_logger.info(f"Done at step {i}, should reset")
+                        observation = self.env.reset(init=True)
+                        observation["graph"] = observation["graph"].to(device)
+                        reward_log.append(rewards[i])
+                        time_log.append(info["episode"]["time"])
+
+                training_logger.warn("Batch done")
+
+                # If our episode didn't end on the last step we need to compute the value for the last state
+                if dones[i] and not info["bad_transition"]:
+                    next_value = 0
+                else:
+                    next_value = (
+                        self.network(observation["graph"].x, observation["graph"].edge_index, observation["ready"])[1]
+                        .detach()
+                        .cpu()
+                        .numpy()[0]
+                    )
+
+                # Compute returns and advantages
+                returns, advantages = self._returns_advantages(rewards, dones, values, next_value)
+
+                # Learning step !
+                loss_value, loss_actor, loss_entropy = self.optimize_model(
+                    observations, actions, probs, probs_entropy, vals, returns, advantages, step=n_step
                 )
 
-                # print("All data: ", observation['graph'])
-                # print("Tasks ready in model: ", observation['ready'])
-                # print("After inference: ", policy, value)
+                training_logger.info(f"Log ratio: {log_ratio}")
+                training_logger.warn(f"Episode {n_episode} done")
+                # time.sleep(2)
 
-                values[n_step] = value.detach().cpu().numpy()
-                vals[n_step] = value
-                probs_entropy[n_step] = -(policy * policy.log()).sum(-1)
-                try:
-                    action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
-                except:
-                    training_logger.warn("Something unexpected has happened during inference")
-                    training_logger.warn(f"Graph X: {observation['graph'].x}")
-                    training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
-                    training_logger.warn(f"Ready: {observation['ready']}")
-                    training_logger.warn(f"Policy: {policy}")
-                    exit()
-
-                probs[n_step] = policy[action_raw]
-                ready_nodes = observation["ready"].squeeze(1).to(torch.bool)
-
-                # print("Ready nodes: ", ready_nodes)
-                # print("Node num: ", observation["node_num"])
-
-                actions[n_step] = (
-                    -1 if action_raw == policy.shape[-1] - 1 else observation["node_num"][ready_nodes][action_raw]
-                )
-
-                # print("Policy: ", policy)
-                # print("Action raw: ", action_raw)
-                # print("Policy shape: ", policy.shape[-1])
-                # print("Action from step: ", actions[n_step])
-
-                # print("Actions: ", actions)
-
-                observation, rewards[n_step], dones[n_step], info = self.env.step(actions[n_step])
-                observation["graph"] = observation["graph"].to(device)
-
-                training_logger.info(f"Step increase: {n_step}")
-
-                if dones[n_step]:
-                    done = dones[n_step]
-                    training_logger.info(f"Done at step {n_step} with reward {rewards[n_step]}, should reset")
-                    reward_log.append(rewards[n_step])
-                    time_log.append(info["episode"]["time"])
-
-                n_step += 1
-
-            # If our episode didn't end on the last step we need to compute the value for the last state
-            if dones[n_step - 1] and not info["bad_transition"]:
-                next_value = 0
-            else:
-                next_value = (
-                    self.network(observation["graph"].x, observation["graph"].edge_index, observation["ready"])[1]
-                    .detach()
-                    .cpu()
-                    .numpy()[0]
-                )
-
-            # Compute returns and advantages
-            returns, advantages = self._returns_advantages(rewards, dones, values, next_value)
-
-            # Learning step !
-            loss_value, loss_actor, loss_entropy = self.optimize_model(
-                observations, actions, probs, probs_entropy, vals, returns, advantages, step=n_step
-            )
-
-            training_logger.info(f"Log ratio: {log_ratio}")
+            training_logger.warn("All episodes done, will now evaluate")
+            # time.sleep(2)
 
             if self.writer is not None and log_ratio * self.config["log_interval"] < n_step:
                 training_logger.info("saving model if better than the previous one")
@@ -232,7 +229,7 @@ class A2C:
                 if self.noise > 0:
                     reward = np.mean([self.evaluate(), self.evaluate(), self.evaluate()])
                 else:
-                    reward = -self.env.reward if self.env.reward else self.env.time
+                    reward = self.evaluate()
                 self.writer.add_scalar("test time", reward, n_step)
                 training_logger.info("comparing current reward: {} with previous best: {}".format(reward, best_reward))
 
@@ -262,8 +259,10 @@ class A2C:
 
             if not self.env.has_converged():
                 training_logger.warn(f"Testing convergence: {self.env.converged}")
-                observation = self.env.reset()
-                observation["graph"] = observation["graph"].to(device)
+                # observation = self.env.reset()
+                # observation["graph"] = observation["graph"].to(device)
+
+            time.sleep(10)
 
         self.network = torch.load(string_save)
         results_last_model = []
@@ -271,7 +270,7 @@ class A2C:
             for _ in range(5):
                 results_last_model.append(self.evaluate())
         else:
-            results_last_model.append(-self.env.reward if self.env.reward else self.env.time)
+            results_last_model.append(self.evaluate())
 
         training_logger.warn("Saving final model")
 
@@ -501,17 +500,9 @@ class A2C:
         done = False
 
         while not done:
-            print("Evaluating")
             observation["graph"] = observation["graph"].to(device)
 
-            print("Data given to network:")
-            print(observation["graph"])
-            print(observation["ready"])
-
             policy, value = self.network(observation["graph"].x, observation["graph"].edge_index, observation["ready"])
-
-            print("Policy: ", policy)
-            print("Value: ", value)
 
             # action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
             action_raw = policy.argmax().detach().cpu().numpy()
@@ -522,14 +513,9 @@ class A2C:
                 else observation["node_num"][ready_nodes][action_raw].detach().numpy()[0]
             )
 
-            print("Action raw: ", action_raw)
-            print("Action: ", action)
-
             try:
                 observation, reward, done, info = self.env.step(action)
             except KeyError:
                 print(chelou)
 
-        print("Finally done")
-
-        return self.env.reward
+        return - self.env.reward

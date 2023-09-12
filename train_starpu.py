@@ -16,6 +16,7 @@ from model import ModelHeterogene
 
 action_queue = Queue()
 data_queue = Queue()
+reward_data_queue = Queue()
 end_queue = Queue()
 
 convergence_status_queue = Queue()
@@ -28,6 +29,7 @@ parser.add_argument("--model_path", type=str, default="none", help="path to load
 parser.add_argument("--output_model_path", type=str, default="none", help="path to save model")
 parser.add_argument("--torchscript_output_model_path", type=str, default="none", help="path to save torchscript model")
 parser.add_argument("--num_env_steps", type=int, default=10**4, help="num env steps")
+parser.add_argument("--num_episodes", type=int, default=5, help="num episodes")
 parser.add_argument("--num_processes", type=int, default=1, help="num proc")
 parser.add_argument("--lr", type=float, default=10**-2, help="learning rate")
 parser.add_argument("--eps", type=float, default=10**-1, help="Random seed.")
@@ -67,58 +69,72 @@ class StarPUEnv(gym.Env):
     def __init__(self):
         self.num_steps = 0
         self.time = 0
-        self.has_just_started = True
         self.task_count = 0
         self.tasks_left = 0
         self.node_num = None
         self.ready_tasks = None
+        self.number_tasks = None
         self.reward = 0
         self.converged = False
 
-    def read_scheduler_data(self, queue):
-        is_done = read_queue(end_queue)
+    def generate_empty_tensor(self):
+        self.tasks_left = 0
+        self.number_tasks = 0
+        self.ready_tasks = torch.tensor([]).reshape(0, 1)
 
-        if not is_done:
-            data = read_queue(queue)
-            number_tasks = data["number_tasks"]
-            self.tasks_left = data["tasks_left"]
-            self.ready_tasks = torch.tensor(data["tasks_ready"]).reshape(number_tasks, 1)
-            self.time = data["time"]
-            tasks_types = []
-
-            for task_type in data["tasks_types"]:
-                task_numbers = torch.arange(4).reshape(1, 4)
-                tasks_types.append(task_numbers.eq(task_type).long())
-
-            x = torch.cat(
-                (
-                    torch.tensor(data["number_successors"]).reshape(number_tasks, 1),
-                    torch.tensor(data["number_predecessors"]).reshape(number_tasks, 1),
-                    torch.vstack(tasks_types),
-                    torch.tensor(data["tasks_ready"]).reshape(number_tasks, 1),
-                    torch.tensor(data["tasks_running"]).reshape(number_tasks, 1),
-                    torch.tensor(data["remaining_time"]).reshape(number_tasks, 1) / 100,
-                    torch.tensor(data["normalized_path_lengths"]).reshape(number_tasks, 1),
-                    torch.tensor(data["node_type"]).repeat(number_tasks, 1),
-                    torch.tensor(data["min_ready_gpu"]).repeat(number_tasks, 1) / 100,
-                    torch.tensor(data["min_ready_cpu"]).repeat(number_tasks, 1) / 100,
-                ),
-                dim=1,
-            )
-            edge_index = torch.tensor(data["edge_index_vector"]).reshape(2, len(data["edge_index_vector"]) // 2)
-
-        else:
-            gflops, max_gflops = read_queue(queue)
-            self.reward = - (max_gflops - gflops) / 500
-            self.tasks_left = 0
-            self.ready_tasks = torch.tensor([]).reshape(0, 1)
-
-            x = torch.tensor([]).reshape(0, 13)
-            edge_index = torch.tensor([]).reshape(2, 0)
-            number_tasks = 0
-
+        x = torch.tensor([]).reshape(0, 13)
+        edge_index = torch.tensor([]).reshape(2, 0)
         graph_data = TaskGraph(x, edge_index, None)
-        self.node_num = torch.arange(number_tasks).reshape(number_tasks, 1)
+
+        return graph_data
+
+    def get_reward(self, reset=False):
+        training_logger.info("Reading data from end queue")
+        is_done = read_queue(end_queue)
+        training_logger.info("Read data from end queue")
+        training_logger.info(f"Is done? {is_done}")
+
+        if not reset and is_done:
+            gflops, max_gflops = read_queue(reward_data_queue)
+            self.reward = - (max_gflops - gflops) / 500
+        else:
+            self.reward = 0
+
+        return self.reward
+
+    def read_scheduler_data(self, queue):
+        training_logger.info("Reading from data queue")
+        data = read_queue(queue)
+        training_logger.info("Got data from data queue")
+        self.number_tasks = number_tasks = data["number_tasks"]
+        self.tasks_left = data["tasks_left"]
+        self.ready_tasks = torch.tensor(data["tasks_ready"]).reshape(number_tasks, 1)
+        self.time = data["time"]
+        tasks_types = []
+
+        for task_type in data["tasks_types"]:
+            task_numbers = torch.arange(4).reshape(1, 4)
+            tasks_types.append(task_numbers.eq(task_type).long())
+
+        x = torch.cat(
+            (
+                torch.tensor(data["number_successors"]).reshape(number_tasks, 1),
+                torch.tensor(data["number_predecessors"]).reshape(number_tasks, 1),
+                torch.vstack(tasks_types),
+                torch.tensor(data["tasks_ready"]).reshape(number_tasks, 1),
+                torch.tensor(data["tasks_running"]).reshape(number_tasks, 1),
+                torch.tensor(data["remaining_time"]).reshape(number_tasks, 1) / 100,
+                torch.tensor(data["normalized_path_lengths"]).reshape(number_tasks, 1),
+                torch.tensor(data["node_type"]).repeat(number_tasks, 1),
+                torch.tensor(data["min_ready_gpu"]).repeat(number_tasks, 1) / 100,
+                torch.tensor(data["min_ready_cpu"]).repeat(number_tasks, 1) / 100,
+            ),
+            dim=1,
+        )
+        edge_index = torch.tensor(data["edge_index_vector"]).reshape(2, len(data["edge_index_vector"]) // 2)
+        graph_data = TaskGraph(x, edge_index, None)
+
+        self.node_num = torch.arange(self.number_tasks).reshape(self.number_tasks, 1)
 
         return graph_data
 
@@ -133,40 +149,37 @@ class StarPUEnv(gym.Env):
         training_logger.info(f"Sending action {action} to scheduler")
         append_queue(action_queue, int(action))
 
+        reward = self.get_reward()
+
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
-        graph_data = self.read_scheduler_data(data_queue)
+        graph_data = self.read_scheduler_data(data_queue) if reward == 0 else self.generate_empty_tensor()
         training_logger.info(f"Graph data: {graph_data}")
 
         # always false until there are no more tasks to schedule
         done = self.tasks_left == 0
 
         training_logger.info(f"Tasks left: {self.tasks_left}")
-
-        # self.time -> time since start of execution
-        reward = self.reward if done else 0
-
         training_logger.info(f"Reward: {reward}")
 
         info = {"episode": {"r": reward, "length": self.num_steps, "time": self.time}, "bad_transition": False}
 
         return ({"graph": graph_data, "node_num": self.node_num, "ready": self.ready_tasks}, reward, done, info)
 
-    def reset(self):
+    def reset(self, init=False):
         self.time = 0
         self.num_steps = 0
         self.task_count = 0
         self.reward = 0
 
         # 'Ask' the scheduler for data (processors, tasks ready, etc.)
-        if not self.has_just_started and not self.tasks_left == 0:
+        if not init:
             training_logger.info(f"Telling scheduler to reset")
             append_queue(action_queue, -2)
+            self.reward = self.get_reward(reset=True)
 
         training_logger.info("Waiting for scheduler to send initial data")
-        graph_data = self.read_scheduler_data(data_queue)
+        graph_data = self.read_scheduler_data(data_queue, reset=True)
         training_logger.info(f"Reset graph data: {graph_data}")
-
-        self.has_just_started = False
 
         return {"graph": graph_data, "node_num": self.node_num, "ready": self.ready_tasks}
 
@@ -180,7 +193,11 @@ class StarPUEnv(gym.Env):
 
 
 def read_queue(queue):
-    return queue.get(block=True)
+    data = queue.get(block=True)
+
+    training_logger.warn(f"Number of elements left in queue: {queue.qsize()}")
+
+    return data
 
 
 def append_queue(queue, data):
