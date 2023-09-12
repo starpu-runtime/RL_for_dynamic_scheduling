@@ -1,15 +1,14 @@
 import argparse
-from collections import deque
 from pprint import pformat
 from queue import Queue
 
 import gym
-import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from a2c import A2C
 from common_logging import training_logger
+from convergence_functions import ConvergenceFunctions
 from env.utils import TaskGraph
 from model import ModelHeterogene
 
@@ -23,6 +22,10 @@ end_queue = Queue()
 
 convergence_status_queue = Queue()
 convergence_ack_queue = Queue()
+
+
+def function_name(name):
+    return name
 
 parser = argparse.ArgumentParser()
 
@@ -50,6 +53,7 @@ parser.add_argument("--result_name", type=str, default="results.csv", help="file
 
 parser.add_argument("--convergence_threshold", type=float, default=50, help="")
 parser.add_argument("--required_buffer_elements", type=int, default=10, help="")
+parser.add_argument("--convergence_function", type=function_name, default="average", help="")
 
 # model settings
 parser.add_argument("--input_dim", type=int, default=13, help="input dim")
@@ -71,7 +75,7 @@ parser.add_argument("--seed_env", type=int, default=42, help="Random seed env ")
 
 
 class StarPUEnv(gym.Env):
-    def __init__(self, required_buffer_elements, convergence_threshold):
+    def __init__(self, convergence_instance, convergence_method):
         self.num_steps = 0
         self.time = 0
         self.task_count = 0
@@ -80,27 +84,14 @@ class StarPUEnv(gym.Env):
         self.ready_tasks = None
         self.number_tasks = 0
         self.reward = 0
-        self.required_buffer_elements = required_buffer_elements
-        self.execution_performance_buffer = deque(maxlen=self.required_buffer_elements)
-        self.convergence_threshold = convergence_threshold
+        self.convergence_instance = convergence_instance
+        self.convergence_method = convergence_method
         self.performance = 0
         self.converged = False
         self.training_ended = False
 
     def has_converged(self):
-        if len(self.execution_performance_buffer) < self.required_buffer_elements:
-            return False
-
-        average = np.average(self.execution_performance_buffer)
-        diff = np.abs(self.performance - average)
-        self.converged = diff < self.convergence_threshold
-
-        training_logger.info("Checking if model has converged")
-        training_logger.info(f"Performance buffer: {self.execution_performance_buffer}")
-        training_logger.info(
-            f"Current performance: {self.performance}, Average: {average}, Threshold: {self.convergence_threshold}"
-        )
-        training_logger.info(f"Has converged? {self.converged}")
+        self.converged = self.convergence_method(self.performance)
 
         return self.converged
 
@@ -135,10 +126,7 @@ class StarPUEnv(gym.Env):
 
             gflops, max_gflops = read_queue(reward_data_queue)
             self.performance = gflops
-            self.execution_performance_buffer.append(self.performance)
-            training_logger.info(
-                f"Inserting in buffer. Current performance: {self.performance}, Buffer: {self.execution_performance_buffer}"
-            )
+            self.convergence_instance.append_buffer(self.performance)
 
             # The goal is to maximize the reward, trending towards a positive value
             self.reward = -(max_gflops - gflops) / 500
@@ -267,12 +255,16 @@ def train(argv=None):
         training_logger.info(f"Received arguments from StarPU:\n{pformat(argv)}")
 
     args = parser.parse_args(argv)
+
+    convergence_instance = ConvergenceFunctions(required_buffer_elements=args.required_buffer_elements, convergence_threshold=args.convergence_threshold)
+    convergence_method = getattr(convergence_instance, args.convergence_function, None)
+
     config_enhanced = vars(args)
     writer = SummaryWriter("runs")
 
     training_logger.info(f"Current config_enhanced is:\n{pformat(config_enhanced)}")
 
-    env = StarPUEnv(args.required_buffer_elements, args.convergence_threshold)
+    env = StarPUEnv(convergence_instance=convergence_instance, convergence_method=convergence_method)
 
     model = ModelHeterogene(
         input_dim=args.input_dim,
