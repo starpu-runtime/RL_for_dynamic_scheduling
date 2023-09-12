@@ -97,7 +97,9 @@ class StarPUEnv(gym.Env):
 
         training_logger.info("Checking if model has converged")
         training_logger.info(f"Performance buffer: {self.execution_performance_buffer}")
-        training_logger.info(f"Current performance: {self.performance}, Average: {average}, Threshold: {self.convergence_threshold}")
+        training_logger.info(
+            f"Current performance: {self.performance}, Average: {average}, Threshold: {self.convergence_threshold}"
+        )
         training_logger.info(f"Has converged? {self.converged}")
 
         return self.converged
@@ -134,10 +136,12 @@ class StarPUEnv(gym.Env):
             gflops, max_gflops = read_queue(reward_data_queue)
             self.performance = gflops
             self.execution_performance_buffer.append(self.performance)
-            training_logger.info(f"Inserting in buffer. Current performance: {self.performance}, Buffer: {self.execution_performance_buffer}")
+            training_logger.info(
+                f"Inserting in buffer. Current performance: {self.performance}, Buffer: {self.execution_performance_buffer}"
+            )
 
             # The goal is to maximize the reward, trending towards a positive value
-            self.reward = - (max_gflops - gflops) / 500
+            self.reward = -(max_gflops - gflops) / 500
 
         return self.reward
 

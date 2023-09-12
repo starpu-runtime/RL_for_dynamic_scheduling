@@ -1,8 +1,6 @@
-import time
 import os
 import time
 from collections import deque
-from copy import deepcopy
 
 import numpy as np
 import torch
@@ -529,4 +527,4 @@ class A2C:
             except KeyError:
                 print(chelou)
 
-        return - self.env.reward
+        return -self.env.reward
