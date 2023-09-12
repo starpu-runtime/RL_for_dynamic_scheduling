@@ -134,7 +134,7 @@ class A2C:
         log_ratio = 0
         best_reward = 100000
 
-        while not self.env.converged:
+        while not self.env.has_converged():
             observation = self.env.reset(init=True)
             observation["graph"] = observation["graph"].to(device)
 
@@ -257,20 +257,16 @@ class A2C:
                 training_logger.info(f"Scheduler learning rate: {self.scheduler.get_lr()}")
                 self.scheduler.step(int(n_step / batch_size))
 
-            if not self.env.has_converged():
-                training_logger.warn(f"Testing convergence: {self.env.converged}")
-                # observation = self.env.reset()
-                # observation["graph"] = observation["graph"].to(device)
-
-            time.sleep(10)
-
         self.network = torch.load(string_save)
         results_last_model = []
+
+        self.env.training_ended = True
+
         if self.noise > 0:
             for _ in range(5):
                 results_last_model.append(self.evaluate())
         else:
-            results_last_model.append(self.evaluate())
+            results_last_model.append(self.evaluate(init=True))
 
         training_logger.warn("Saving final model")
 
@@ -495,8 +491,8 @@ class A2C:
         self.optimizer.step()
         return loss_value.data.item(), loss_actor.data.item(), loss_entropy.data.item()
 
-    def evaluate(self, render=False):
-        observation = self.env.reset()
+    def evaluate(self, render=False, init=False):
+        observation = self.env.reset(init)
         done = False
 
         while not done:
@@ -512,6 +508,21 @@ class A2C:
                 if action_raw == policy.shape[-1] - 1
                 else observation["node_num"][ready_nodes][action_raw].detach().numpy()[0]
             )
+
+            # New logic: Override action if action_raw is -1
+            if action == -1:
+                # Get indices where ready_nodes is True
+                true_indices = torch.nonzero(ready_nodes).squeeze()
+
+                # Take the first index (or apply some other selection logic)
+                if true_indices.nelement() > 0:
+                    true_indices_np = true_indices.numpy()
+                    selected_index = true_indices_np[0] if true_indices.nelement() > 1 else true_indices
+
+                    # Update the action
+                    action = observation["node_num"][selected_index].detach().numpy().item()
+
+                    training_logger.error(f"Forcing scheduling of task {selected_index}")
 
             try:
                 observation, reward, done, info = self.env.step(action)

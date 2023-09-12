@@ -1,8 +1,10 @@
 import argparse
+from collections import deque
 from pprint import pformat
 from queue import Queue
 
 import gym
+import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
 
@@ -75,7 +77,30 @@ class StarPUEnv(gym.Env):
         self.ready_tasks = None
         self.number_tasks = None
         self.reward = 0
+        self.required_buffer_elements = 5
+        self.execution_performance_buffer = deque(maxlen=self.required_buffer_elements)
+        self.convergence_threshold = 1.0
+        self.performance = 0
         self.converged = False
+        self.training_ended = False
+
+    def push_convergence_status(self):
+        append_queue(convergence_status_queue, self.converged)
+
+    def has_converged(self):
+        if len(self.execution_performance_buffer) < self.required_buffer_elements:
+            return False
+
+        average = np.average(self.execution_performance_buffer)
+        diff = np.abs(self.performance - average)
+        self.converged = diff < self.convergence_threshold
+
+        training_logger.info("Checking if model has converged")
+        training_logger.info(f"Performance buffer: {self.execution_performance_buffer}")
+        training_logger.info(f"Current performance: {self.performance}, Average: {average}, Threshold: {self.convergence_threshold}")
+        training_logger.info(f"Has converged? {self.converged}")
+
+        return self.converged
 
     def generate_empty_tensor(self):
         self.tasks_left = 0
@@ -94,8 +119,15 @@ class StarPUEnv(gym.Env):
         training_logger.info("Read data from end queue")
         training_logger.info(f"Is done? {is_done}")
 
+        if reset or is_done:
+            append_queue(convergence_status_queue, True if self.training_ended else False)
+            training_logger.info(f"Training ended: {self.training_ended}")
+
         if not reset and is_done:
             gflops, max_gflops = read_queue(reward_data_queue)
+            self.performance = gflops
+            self.execution_performance_buffer.append(self.performance)
+            training_logger.info(f"Inserting in buffer. Current performance: {self.performance}, Buffer: {self.execution_performance_buffer}")
             self.reward = - (max_gflops - gflops) / 500
         else:
             self.reward = 0
@@ -178,7 +210,7 @@ class StarPUEnv(gym.Env):
             self.reward = self.get_reward(reset=True)
 
         training_logger.info("Waiting for scheduler to send initial data")
-        graph_data = self.read_scheduler_data(data_queue, reset=True)
+        graph_data = self.read_scheduler_data(data_queue)
         training_logger.info(f"Reset graph data: {graph_data}")
 
         return {"graph": graph_data, "node_num": self.node_num, "ready": self.ready_tasks}
@@ -186,21 +218,18 @@ class StarPUEnv(gym.Env):
     def render(self, mode="human"):
         pass
 
-    def has_converged(self):
-        self.converged = read_queue(convergence_status_queue)
-
-        return self.converged
-
 
 def read_queue(queue):
     data = queue.get(block=True)
 
-    training_logger.warn(f"Number of elements left in queue: {queue.qsize()}")
+    training_logger.warn(f"Number of elements left in queue after get: {queue.qsize()}")
 
     return data
 
 
 def append_queue(queue, data):
+    training_logger.warn(f"Number of elements left in queue before append: {queue.qsize()}")
+
     queue.put(data)
 
 
