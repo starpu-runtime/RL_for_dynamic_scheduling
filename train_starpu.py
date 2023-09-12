@@ -78,7 +78,7 @@ class StarPUEnv(gym.Env):
         self.tasks_left = 0
         self.node_num = None
         self.ready_tasks = None
-        self.number_tasks = None
+        self.number_tasks = 0
         self.reward = 0
         self.required_buffer_elements = required_buffer_elements
         self.execution_performance_buffer = deque(maxlen=self.required_buffer_elements)
@@ -86,9 +86,6 @@ class StarPUEnv(gym.Env):
         self.performance = 0
         self.converged = False
         self.training_ended = False
-
-    def push_convergence_status(self):
-        append_queue(convergence_status_queue, self.converged)
 
     def has_converged(self):
         if len(self.execution_performance_buffer) < self.required_buffer_elements:
@@ -117,30 +114,36 @@ class StarPUEnv(gym.Env):
         return graph_data
 
     def get_reward(self, reset=False):
-        training_logger.info("Reading data from end queue")
-        is_done = read_queue(end_queue)
-        training_logger.info("Read data from end queue")
-        training_logger.info(f"Is done? {is_done}")
+        done = read_queue(end_queue)
 
-        if reset or is_done:
+        if reset or done:
+            # If get_reward was called by self.reset() it means we have finished an execution, either prematurely or
+            # because we've reached the end of the execution as signaled by the scheduler
+            # In that case, we signal the scheduler to continue execution if training hasn't finished and stop if it has
             append_queue(convergence_status_queue, True if self.training_ended else False)
             training_logger.info(f"Training ended: {self.training_ended}")
 
-        if not reset and is_done:
+        if reset and not done:
+            # If get_reward was called by self.reset() and the execution wasn't done (signaled by the scheduler), then
+            # the reward is set to 0
+            self.reward = 0
+        else:
+            # If not, that means get_reward was called by self.step() and the scheduler has signaled the end of the
+            # execution and a reward should be given
+
             gflops, max_gflops = read_queue(reward_data_queue)
             self.performance = gflops
             self.execution_performance_buffer.append(self.performance)
             training_logger.info(f"Inserting in buffer. Current performance: {self.performance}, Buffer: {self.execution_performance_buffer}")
+
+            # The goal is to maximize the reward, trending towards a positive value
             self.reward = - (max_gflops - gflops) / 500
-        else:
-            self.reward = 0
 
         return self.reward
 
     def read_scheduler_data(self, queue):
-        training_logger.info("Reading from data queue")
         data = read_queue(queue)
-        training_logger.info("Got data from data queue")
+
         self.number_tasks = number_tasks = data["number_tasks"]
         self.tasks_left = data["tasks_left"]
         self.ready_tasks = torch.tensor(data["tasks_ready"]).reshape(number_tasks, 1)
@@ -180,14 +183,17 @@ class StarPUEnv(gym.Env):
             self.task_count += 1
 
         # Tell the scheduler which action to take right now
-        # (schedule the task associated to the ID returned, or skip if action > nb_tasks)
+        # (schedule the task associated to the ID returned, or skip if action is -1)
         training_logger.info(f"Sending action {action} to scheduler")
         append_queue(action_queue, int(action))
 
+        # Ask for reward, either 0 if execution hasn't finished yet or a negative value if it has
         reward = self.get_reward()
 
-        # 'Ask' the scheduler for data (processors, tasks ready, etc.)
+        # Read data pushed by the scheduler if the execution hasn't finished (reward is 0), or generate an
+        # empty tensor otherwise to continue execution
         graph_data = self.read_scheduler_data(data_queue) if reward == 0 else self.generate_empty_tensor()
+
         training_logger.info(f"Graph data: {graph_data}")
 
         # always false until there are no more tasks to schedule
@@ -198,7 +204,7 @@ class StarPUEnv(gym.Env):
 
         info = {"episode": {"r": reward, "length": self.num_steps, "time": self.time}, "bad_transition": False}
 
-        return ({"graph": graph_data, "node_num": self.node_num, "ready": self.ready_tasks}, reward, done, info)
+        return {"graph": graph_data, "node_num": self.node_num, "ready": self.ready_tasks}, reward, done, info
 
     def reset(self, init=False):
         self.time = 0
@@ -206,10 +212,11 @@ class StarPUEnv(gym.Env):
         self.task_count = 0
         self.reward = 0
 
-        # 'Ask' the scheduler for data (processors, tasks ready, etc.)
         if not init:
+            # We only need to tell the scheduler to reset if it hasn't reset by itself (completed its execution)
             training_logger.info(f"Telling scheduler to reset")
             append_queue(action_queue, -2)
+
             self.reward = self.get_reward(reset=True)
 
         training_logger.info("Waiting for scheduler to send initial data")
@@ -224,7 +231,6 @@ class StarPUEnv(gym.Env):
 
 def read_queue(queue):
     data = queue.get(block=True)
-
     training_logger.warn(f"Number of elements left in queue after get: {queue.qsize()}")
 
     return data
@@ -245,7 +251,7 @@ def convert_model(args, model_path):
     model_state_dict.load_state_dict(model.state_dict(), strict=False)
     model_torchscript = torch.jit.script(model_state_dict)
 
-    training_logger.info(f"Saving model to path")
+    training_logger.info(f"Saving model to path {args.torchscript_output_model_path}")
 
     model_torchscript.save(args.torchscript_output_model_path)
 
