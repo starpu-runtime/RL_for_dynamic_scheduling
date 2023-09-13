@@ -28,6 +28,7 @@ convergence_ack_queue = Queue()
 def function_name(name):
     return name
 
+
 parser = argparse.ArgumentParser()
 
 # Training settings
@@ -74,7 +75,13 @@ parser.add_argument("--noise", type=float, default=0, help="noise")
 parser.add_argument("--env_type", type=str, default="QR", help="chol or LU or QR")
 parser.add_argument("--seed_env", type=int, default=42, help="Random seed env ")
 
-parser.add_argument("--logging_level", type=str, default="info", choices=["info", "debug", "error", "critical", "warn"], help="logging level (default: %(default)s)")
+parser.add_argument(
+    "--logging_level",
+    type=str,
+    default="info",
+    choices=["info", "debug", "error", "critical", "warn"],
+    help="logging level (default: %(default)s)",
+)
 
 
 class StarPUEnv(gym.Env):
@@ -258,7 +265,9 @@ def train(argv=None):
 
     training_logger.info(f"Received arguments from StarPU:\n{pformat(argv)}")
 
-    convergence_instance = ConvergenceFunctions(required_buffer_elements=args.required_buffer_elements, convergence_threshold=args.convergence_threshold)
+    convergence_instance = ConvergenceFunctions(
+        required_buffer_elements=args.required_buffer_elements, convergence_threshold=args.convergence_threshold
+    )
     convergence_method = getattr(convergence_instance, args.convergence_function, None)
 
     config_enhanced = vars(args)
