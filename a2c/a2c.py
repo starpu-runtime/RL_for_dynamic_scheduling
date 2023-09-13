@@ -146,7 +146,7 @@ class A2C:
                 probs_entropy = torch.zeros(batch_size, dtype=torch.float, device=device)
 
                 for i in range(batch_size):
-                    print(f"Episode {n_episode}, batch: {i}/{batch_size}")
+                    training_logger.info(f"Episode {n_episode}, batch: {i}/{batch_size}")
 
                     observations.append(observation["graph"])
                     policy, value = self.network(
@@ -159,11 +159,11 @@ class A2C:
                     try:
                         action_raw = torch.multinomial(policy, 1).detach().cpu().numpy()
                     except:
-                        training_logger.warn("Something unexpected has happened during inference")
-                        training_logger.warn(f"Graph X: {observation['graph'].x}")
-                        training_logger.warn(f"Edge Index: {observation['graph'].edge_index}")
-                        training_logger.warn(f"Ready: {observation['ready']}")
-                        training_logger.warn(f"Policy: {policy}")
+                        training_logger.error("Something unexpected has happened during inference")
+                        training_logger.error(f"Graph X: {observation['graph'].x}")
+                        training_logger.error(f"Edge Index: {observation['graph'].edge_index}")
+                        training_logger.error(f"Ready: {observation['ready']}")
+                        training_logger.error(f"Policy: {policy}")
                         exit()
 
                     probs[i] = policy[action_raw]
@@ -522,9 +522,6 @@ class A2C:
 
                     training_logger.error(f"Forcing scheduling of task {selected_index}")
 
-            try:
-                observation, reward, done, info = self.env.step(action)
-            except KeyError:
-                print(chelou)
+            observation, reward, done, info = self.env.step(action)
 
         return -self.env.reward

@@ -1,4 +1,5 @@
 import argparse
+import logging
 from pprint import pformat
 from queue import Queue
 
@@ -72,6 +73,8 @@ parser.add_argument("--window", type=int, default=0, help="window")
 parser.add_argument("--noise", type=float, default=0, help="noise")
 parser.add_argument("--env_type", type=str, default="QR", help="chol or LU or QR")
 parser.add_argument("--seed_env", type=int, default=42, help="Random seed env ")
+
+parser.add_argument("--logging_level", type=str, default="info", choices=["info", "debug", "error", "critical", "warn"], help="logging level (default: %(default)s)")
 
 
 class StarPUEnv(gym.Env):
@@ -249,12 +252,11 @@ def convert_model(args, model_path):
 
 
 def train(argv=None):
-    if argv is None:
-        argv = {}
-    else:
-        training_logger.info(f"Received arguments from StarPU:\n{pformat(argv)}")
+    args = parser.parse_args({} if argv is None else argv)
 
-    args = parser.parse_args(argv)
+    training_logger.setLevel(logging.getLevelName(args.logging_level.upper()))
+
+    training_logger.info(f"Received arguments from StarPU:\n{pformat(argv)}")
 
     convergence_instance = ConvergenceFunctions(required_buffer_elements=args.required_buffer_elements, convergence_threshold=args.convergence_threshold)
     convergence_method = getattr(convergence_instance, args.convergence_function, None)
