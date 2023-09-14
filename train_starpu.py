@@ -293,7 +293,4 @@ def train(argv=None):
 
     convert_model(args, args.output_model_path)
 
-    training_logger.warn("Warning the scheduler it can now stop")
-    # Warn the scheduler it can now gracefully stop
-    append_queue(convergence_ack_queue, 1)
     return 0
